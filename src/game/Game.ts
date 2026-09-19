@@ -66,7 +66,6 @@ export class Game {
   private readonly onHud: (state: HudState) => void;
   private readonly onLearningPanel: (state: LearningPanelState) => void;
   private readonly onResult: (result: GameResult) => void;
-  private readonly onQuickRestart: () => void;
   private settings: ShooterSettings;
   private vocabulary: VocabularyEntry[];
   private targets: Target[] = [];
@@ -114,7 +113,6 @@ export class Game {
     onHud: (state: HudState) => void,
     onLearningPanel: (state: LearningPanelState) => void,
     onResult: (result: GameResult) => void,
-    onQuickRestart: () => void,
   ) {
     const ctx = canvas.getContext("2d");
     if (ctx === null) throw new Error("Canvas 2D context is unavailable");
@@ -125,7 +123,6 @@ export class Game {
     this.onHud = onHud;
     this.onLearningPanel = onLearningPanel;
     this.onResult = onResult;
-    this.onQuickRestart = onQuickRestart;
     this.audio = new AudioManager(settings);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
@@ -511,12 +508,6 @@ export class Game {
       eventTarget instanceof HTMLSelectElement ||
       document.querySelector("dialog[open]") !== null
     ) {
-      return;
-    }
-
-    if (event.key === this.settings.quickRestartKey) {
-      event.preventDefault();
-      this.onQuickRestart();
       return;
     }
 
