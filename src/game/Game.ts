@@ -926,7 +926,7 @@ export class Game {
 
     const baseFontSize = rush
       ? Math.max(
-          8,
+          6.5,
           Math.min(
             dormant ? 12 : 14,
             (Math.max(42, target.width) - 8) /
