@@ -327,8 +327,12 @@ function renderHud(state: HudState): void {
     `${unlock} unlocks · ${settings.quickRestartKey} restarts · Backspace corrects`;
 
   document.documentElement.style.setProperty(
-    "--danger-level",
-    state.dangerLevel.toFixed(3),
+    "--danger-blur",
+    `${Math.round(34 * state.dangerLevel)}px`,
+  );
+  document.documentElement.style.setProperty(
+    "--danger-alpha",
+    (0.18 * state.dangerLevel).toFixed(3),
   );
 }
 
