@@ -1,7 +1,7 @@
 import type { ShooterSettings } from "../../types";
 import type { Target } from "../mode-types";
 
-export function classicMaxTargets(settings: ShooterSettings, score: number): number {
+export function classicMaxTargets(score: number): number {
   return Math.min(8, 4 + Math.floor(score / 180));
 }
 
