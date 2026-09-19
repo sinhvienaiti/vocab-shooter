@@ -41,7 +41,7 @@ export function layoutRushTargets(targets: Target[], width: number, height: numb
     const column = Math.floor(index / rows);
     target.x = cellWidth * column + cellWidth / 2;
     target.y = usableTop + cellHeight * row + cellHeight / 2;
-    target.width = Math.max(42, cellWidth - 6);
+    target.width = Math.max(12, cellWidth - 6);
   });
 }
 
