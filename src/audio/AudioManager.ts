@@ -4,7 +4,6 @@ export class AudioManager {
   private context: AudioContext | null = null;
   private baseGain: GainNode | null = null;
   private dangerGain: GainNode | null = null;
-  private masterGain: GainNode | null = null;
   private musicNodes: OscillatorNode[] = [];
   private settings: ShooterSettings;
   private lastDanger = -1;
@@ -36,7 +35,6 @@ export class AudioManager {
     this.lastDanger = -1;
     this.baseGain = null;
     this.dangerGain = null;
-    this.masterGain = null;
   }
 
   setDanger(level: number): void {
@@ -116,7 +114,6 @@ export class AudioManager {
     mid.start();
     alert.start();
 
-    this.masterGain = master;
     this.baseGain = base;
     this.dangerGain = danger;
     this.musicNodes = [low, mid, alert];
