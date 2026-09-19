@@ -231,8 +231,10 @@ export class Game {
       if (this.animationId !== null) cancelAnimationFrame(this.animationId);
       this.animationId = null;
       stopSpeech();
+      this.audio.suspend();
       return;
     }
+    this.audio.unlock();
     this.lastTime = performance.now();
     if (this.animationId === null) {
       this.animationId = requestAnimationFrame((now) => this.loop(now));
@@ -881,7 +883,17 @@ export class Game {
     }
     ctx.globalAlpha = 1;
 
-    for (const target of this.targets) this.drawTarget(target);
+    if (this.settings.mode === "targetRush") {
+      for (const target of this.targets) {
+        if (target.state === "dormant") this.drawTarget(target);
+      }
+      for (const target of this.targets) {
+        if (target.state !== "dormant") this.drawTarget(target);
+      }
+    } else {
+      for (const target of this.targets) this.drawTarget(target);
+    }
+
     for (const shot of this.shots) this.drawShot(shot);
     for (const particle of this.particles) this.drawParticle(particle);
     for (const reveal of this.reveals) this.drawReveal(reveal);
@@ -896,8 +908,17 @@ export class Game {
     const spotlight = target.state === "spotlight";
     const danger = target.state === "danger";
     const dormant = target.state === "dormant";
-    const height = this.settings.mode === "targetRush" ? 34 : 42;
-    const x = target.x - target.width / 2;
+    const rush = this.settings.mode === "targetRush";
+    const height = rush ? 34 : 42;
+    const naturalWidth = Math.min(
+      Math.max(110, 52 + target.entry.en.length * 8.4),
+      Math.max(110, this.width - 24),
+    );
+    const displayWidth =
+      rush && !dormant && (spotlight || danger || active)
+        ? Math.max(target.width, naturalWidth)
+        : target.width;
+    const x = target.x - displayWidth / 2;
     const y = target.y - height / 2;
 
     ctx.save();
@@ -920,7 +941,7 @@ export class Game {
             ? "rgba(113,215,255,.9)"
             : "rgba(140,164,204,.28)";
     ctx.lineWidth = danger || spotlight || active ? 1.8 : 1;
-    this.roundRect(ctx, x, y, target.width, height, 11);
+    this.roundRect(ctx, x, y, displayWidth, height, 11);
     ctx.fill();
     ctx.stroke();
 
@@ -928,14 +949,12 @@ export class Game {
       ctx.strokeStyle = danger ? "rgba(255,93,113,.24)" : "rgba(255,219,91,.22)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(target.x, target.y, Math.max(target.width * 0.58, 64), 0, Math.PI * 2);
+      ctx.arc(target.x, target.y, Math.max(displayWidth * 0.58, 64), 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    ctx.font =
-      this.settings.mode === "targetRush"
-        ? "700 13px ui-monospace, SFMono-Regular, Menlo, monospace"
-        : "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
+    const fontSize = rush && dormant ? 11 : rush ? 13 : 16;
+    ctx.font = `700 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     const prefix = target.entry.en.slice(0, target.typed);
@@ -949,10 +968,15 @@ export class Game {
         : active
           ? "#74dcff"
           : "#dce7f7";
-    ctx.fillText(prefix, textX, target.y + 1);
-    textX += ctx.measureText(prefix).width;
-    ctx.fillStyle = dormant ? "#a2afc2" : "#dce7f7";
-    ctx.fillText(suffix, textX, target.y + 1);
+    if (rush && dormant) {
+      ctx.fillStyle = "#a2afc2";
+      ctx.fillText(target.entry.en, textX, target.y + 1, Math.max(20, displayWidth - 12));
+    } else {
+      ctx.fillText(prefix, textX, target.y + 1);
+      textX += ctx.measureText(prefix).width;
+      ctx.fillStyle = "#dce7f7";
+      ctx.fillText(suffix, textX, target.y + 1);
+    }
     ctx.restore();
   }
 
