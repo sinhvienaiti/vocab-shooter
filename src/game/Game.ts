@@ -454,7 +454,7 @@ export class Game {
   }
 
   private currentMaxTargets(): number {
-    if (this.settings.mode === "classic") return classicMaxTargets(this.settings, this.score);
+    if (this.settings.mode === "classic") return classicMaxTargets(this.score);
     if (this.settings.mode === "bounce") return this.settings.bounce.maxActiveWords + 1;
     if (this.settings.mode === "timeAttack") return 7;
     return 0;
