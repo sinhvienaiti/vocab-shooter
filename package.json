@@ -13,10 +13,5 @@
   "devDependencies": {
     "typescript": "^5.9.2",
     "vite": "^7.1.7"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
   }
 }
