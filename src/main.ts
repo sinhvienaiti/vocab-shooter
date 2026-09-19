@@ -8,7 +8,7 @@ import { parseBulkVocabulary, vocabularyToBulk } from "./ui/vocabulary-editor";
 const app = document.querySelector<HTMLDivElement>("#app");
 if (app === null) throw new Error("#app not found");
 
-app.innerHTML = \`
+app.innerHTML = `
   <div class="shooter-shell">
     <header class="hud-bar">
       <div class="title-block">
@@ -75,7 +75,7 @@ app.innerHTML = \`
       <div class="dialog-footer"><button type="button" id="resetSettings">Defaults</button><button type="button" id="saveSettings" class="primary">Save settings</button></div>
     </form>
   </dialog>
-\`;
+`;
 
 const canvas = document.querySelector<HTMLCanvasElement>("#gameCanvas");
 const vocabularyDialog = document.querySelector<HTMLDialogElement>("#vocabularyDialog");
@@ -100,7 +100,7 @@ const game = new Game(canvas, vocabulary, settings, hud);
 
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
-  if (el === null) throw new Error(\`#\${id} not found\`);
+  if (el === null) throw new Error(`#${id} not found`);
   return el as T;
 }
 
@@ -125,7 +125,7 @@ function renderVocabularyRows(): void {
   const body = byId<HTMLTableSectionElement>("vocabRows");
   body.replaceChildren();
   for (const entry of vocabulary) body.append(createVocabularyRow(entry));
-  byId("vocabCount").textContent = \`\${vocabulary.length} entries\`;
+  byId("vocabCount").textContent = `${vocabulary.length} entries`;
 }
 
 function createVocabularyRow(entry: VocabularyEntry): HTMLTableRowElement {
@@ -152,7 +152,7 @@ function createVocabularyRow(entry: VocabularyEntry): HTMLTableRowElement {
 }
 
 function updateTableCount(): void {
-  byId("vocabCount").textContent = \`\${document.querySelectorAll("#vocabRows tr").length} entries\`;
+  byId("vocabCount").textContent = `${document.querySelectorAll("#vocabRows tr").length} entries`;
 }
 
 byId<HTMLButtonElement>("addRow").addEventListener("click", () => {
@@ -229,9 +229,9 @@ function fillSettingsForm(value: ShooterSettings): void {
   updateSettingOutputs();
 }
 function updateSettingOutputs(): void {
-  byId<HTMLOutputElement>("speechRateValue").value = \`\${Number(byId<HTMLInputElement>("speechRate").value).toFixed(2)}×\`;
-  byId<HTMLOutputElement>("volumeValue").value = \`\${Math.round(Number(byId<HTMLInputElement>("volume").value) * 100)}%\`;
-  byId<HTMLOutputElement>("revealMsValue").value = \`\${(Number(byId<HTMLInputElement>("revealMs").value) / 1000).toFixed(1)}s\`;
+  byId<HTMLOutputElement>("speechRateValue").value = `${Number(byId<HTMLInputElement>("speechRate").value).toFixed(2)}×`;
+  byId<HTMLOutputElement>("volumeValue").value = `${Math.round(Number(byId<HTMLInputElement>("volume").value) * 100)}%`;
+  byId<HTMLOutputElement>("revealMsValue").value = `${(Number(byId<HTMLInputElement>("revealMs").value) / 1000).toFixed(1)}s`;
 }
 for (const id of ["speechRate", "volume", "revealMs"]) byId<HTMLInputElement>(id).addEventListener("input", updateSettingOutputs);
 byId<HTMLButtonElement>("resetSettings").addEventListener("click", () => fillSettingsForm(defaultSettings));
