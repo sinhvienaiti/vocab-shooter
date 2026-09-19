@@ -477,9 +477,9 @@ export class Game {
     const alpha = Math.min(1, progress * 4);
     const viSize = 17;
     const ipaSize = 12;
-    ctx.font = \`800 \${viSize}px ui-sans-serif, system-ui\`;
+    ctx.font = `800 ${viSize}px ui-sans-serif, system-ui`;
     const viWidth = ctx.measureText(reveal.vi).width;
-    ctx.font = \`600 \${ipaSize}px ui-sans-serif, system-ui\`;
+    ctx.font = `600 ${ipaSize}px ui-sans-serif, system-ui`;
     const ipaWidth = ctx.measureText(reveal.ipa || " ").width;
     const width = Math.min(this.width - 24, Math.max(150, Math.max(viWidth, ipaWidth) + 32));
     const height = reveal.ipa.trim() === "" ? 45 : 61;
@@ -496,7 +496,7 @@ export class Game {
     ctx.stroke();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = \`800 \${viSize}px ui-sans-serif, system-ui\`;
+    ctx.font = `800 ${viSize}px ui-sans-serif, system-ui`;
     ctx.fillStyle = "#f5f9ff";
     ctx.fillText(
       reveal.vi,
@@ -505,7 +505,7 @@ export class Game {
       width - 24,
     );
     if (reveal.ipa.trim() !== "") {
-      ctx.font = \`600 \${ipaSize}px ui-sans-serif, system-ui\`;
+      ctx.font = `600 ${ipaSize}px ui-sans-serif, system-ui`;
       ctx.fillStyle = "#91a7c7";
       ctx.fillText(reveal.ipa, x + width / 2, y + 43, width - 24);
     }
