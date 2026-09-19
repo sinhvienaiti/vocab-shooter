@@ -35,7 +35,7 @@ export type TargetRushSettings = {
 };
 
 export type ShooterSettings = {
-  version: 2;
+  version: 3;
   mode: GameMode;
   speechEnabled: boolean;
   accent: Accent;
