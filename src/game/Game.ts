@@ -1,6 +1,6 @@
 import { AudioManager } from "../audio/AudioManager";
 import { speakEnglish, stopSpeech } from "../audio/speech";
-import type { GameMode, ShooterSettings, VocabularyEntry } from "../types";
+import type { ShooterSettings, VocabularyEntry } from "../types";
 import {
   classicDangerLevel,
   classicMaxTargets,
@@ -153,9 +153,6 @@ export class Game {
     this.vocabulary = entries;
   }
 
-  getSettings(): ShooterSettings {
-    return this.settings;
-  }
 
   start(): void {
     if (this.vocabulary.length === 0) return;
@@ -421,24 +418,8 @@ export class Game {
       }
     }
 
-    if (
-      this.running &&
-      this.spotlightTargetId === null &&
-      this.rushQueue.length === 0 &&
-      this.targets.every((target) => target.pending || target.state === "dormant")
-    ) {
-      this.finishRun("Target set complete");
-      return;
-    }
-
-    if (
-      this.running &&
-      this.rushQueue.length === 0 &&
-      this.spotlightTargetId === null &&
-      this.targets.every((target) => target.pending)
-    ) {
-      this.finishRun("Target set complete");
-    }
+    // Successful completion is finalized after the last projectile lands,
+    // so the player sees the hit effect before the results dialog.
   }
 
   private activateNextSpotlight(): void {
@@ -708,6 +689,16 @@ export class Game {
     }
 
     this.removeTarget(target.id);
+
+    if (
+      this.settings.mode === "targetRush" &&
+      this.running &&
+      this.rushQueue.length === 0 &&
+      this.spotlightTargetId === null &&
+      this.targets.length === 0
+    ) {
+      this.finishRun("Target set complete");
+    }
   }
 
   private removeTarget(id: string): void {
