@@ -302,7 +302,6 @@ const game = new Game(
   hud,
   learningPanel,
   showResult,
-  prepareRestart,
 );
 
 function prepareRestart(): void {
@@ -604,9 +603,15 @@ byId<HTMLButtonElement>("saveSettings").addEventListener("click", () => {
 });
 
 window.addEventListener("keydown", (event) => {
-  if (event.key === settings.quickRestartKey) return;
-  if (vocabularyDialog.open || settingsDialog.open || resultDialog.open) return;
-  if (!readyForKey || countdownActive) return;
+  if (vocabularyDialog.open || settingsDialog.open) return;
+
+  if (event.key === settings.quickRestartKey) {
+    event.preventDefault();
+    prepareRestart();
+    return;
+  }
+
+  if (resultDialog.open || !readyForKey || countdownActive) return;
   if (event.metaKey || event.ctrlKey || event.altKey) return;
 
   event.preventDefault();
