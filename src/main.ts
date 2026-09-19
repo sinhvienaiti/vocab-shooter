@@ -534,5 +534,11 @@ byId<HTMLButtonElement>("saveSettings").addEventListener("click", () => {
   settingsDialog.close();
 });
 
+window.addEventListener("keydown", (event) => {
+  if (!resultDialog.open || event.key !== settings.quickRestartKey) return;
+  event.preventDefault();
+  startGame();
+});
+
 updateModeUi();
 window.addEventListener("beforeunload", () => game.destroy());
