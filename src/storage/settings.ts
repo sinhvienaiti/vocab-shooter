@@ -66,7 +66,6 @@ export function normalizeSettings(raw: unknown): ShooterSettings {
   if (raw === null || typeof raw !== "object") return structuredClone(defaultSettings);
 
   const data = raw as Record<string, unknown>;
-  const version = numberInRange(data["version"], 1, 1, 3);
   const classic = (data["classic"] ?? {}) as Record<string, unknown>;
   const bounce = (data["bounce"] ?? {}) as Record<string, unknown>;
   const timeAttack = (data["timeAttack"] ?? {}) as Record<string, unknown>;
@@ -93,14 +92,11 @@ export function normalizeSettings(raw: unknown): ShooterSettings {
       ["performance", "balanced", "quality"],
       defaultSettings.graphics,
     ),
-    quickRestartKey:
-      version < 3
-        ? defaultSettings.quickRestartKey
-        : enumValue<QuickRestartKey>(
-            data["quickRestartKey"],
-            ["Tab", "Escape"],
-            defaultSettings.quickRestartKey,
-          ),
+    quickRestartKey: enumValue<QuickRestartKey>(
+      data["quickRestartKey"],
+      ["Tab", "Escape"],
+      defaultSettings.quickRestartKey,
+    ),
     musicEnabled: boolValue(data["musicEnabled"], defaultSettings.musicEnabled),
     musicVolume: numberInRange(data["musicVolume"], defaultSettings.musicVolume, 0, 1),
     sfxVolume: numberInRange(data["sfxVolume"], defaultSettings.sfxVolume, 0, 1),
