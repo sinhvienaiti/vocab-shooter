@@ -329,7 +329,7 @@ export class Game {
 
     if (
       this.spawnElapsed >= interval &&
-      activeCount < classicMaxTargets(this.settings, this.score)
+      activeCount < classicMaxTargets(this.score)
     ) {
       this.spawnTarget();
       this.spawnElapsed = 0;
@@ -427,33 +427,22 @@ export class Game {
       }
     }
 
-    this.rushFocusRemaining -= delta;
-    if (this.rushFocusRemaining <= 0) {
-      const spotlight = this.spotlightTarget();
-      if (spotlight !== null && !spotlight.pending) {
-        spotlight.state = "danger";
-        spotlight.dangerRemaining = this.settings.targetRush.impactWindowSec;
-        spotlight.lateSave = true;
+    if (this.rushSpotlightId !== null) {
+      this.rushFocusRemaining -= delta;
+      if (this.rushFocusRemaining <= 0) {
+        const spotlight = this.spotlightTarget();
+        if (spotlight !== null && !spotlight.pending) {
+          spotlight.state = "danger";
+          spotlight.dangerRemaining = this.settings.targetRush.impactWindowSec;
+          spotlight.lateSave = true;
+        }
+
+        this.rushSpotlightId = null;
+        this.activateNextRushTarget();
       }
-
-      this.rushSpotlightId = null;
-      this.activateNextRushTarget();
     }
 
-    if (
-      this.rushNextIndex >= this.rushOrder.length &&
-      this.targets.every((target) => target.pending || target.state === "dormant")
-    ) {
-      const unfinished = this.targets.some(
-        (target) => !target.pending && (target.state === "danger" || target.state === "spotlight"),
-      );
-      if (!unfinished) this.finishRun("Target set complete");
-    }
-
-    if (
-      this.rushNextIndex >= this.rushOrder.length &&
-      this.targets.length === 0
-    ) {
+    if (this.rushNextIndex >= this.rushOrder.length && this.targets.length === 0) {
       this.finishRun("Target set complete");
     }
   }
