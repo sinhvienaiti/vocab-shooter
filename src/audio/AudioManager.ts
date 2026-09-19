@@ -23,6 +23,10 @@ export class AudioManager {
     if (this.settings.musicEnabled) this.ensureMusic();
   }
 
+  suspend(): void {
+    if (this.context?.state === "running") void this.context.suspend();
+  }
+
   stop(): void {
     for (const oscillator of this.musicNodes) {
       try {
