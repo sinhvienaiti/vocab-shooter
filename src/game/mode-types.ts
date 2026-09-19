@@ -17,7 +17,6 @@ export type Target = {
   state: TargetState;
   dangerRemaining: number;
   lateSave: boolean;
-  startedAt: number;
 };
 
 export type HudState = {
