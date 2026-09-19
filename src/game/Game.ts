@@ -66,6 +66,7 @@ export class Game {
   private readonly onHud: (state: HudState) => void;
   private readonly onLearningPanel: (state: LearningPanelState) => void;
   private readonly onResult: (result: GameResult) => void;
+  private readonly onQuickRestart: () => void;
   private settings: ShooterSettings;
   private vocabulary: VocabularyEntry[];
   private targets: Target[] = [];
@@ -113,6 +114,7 @@ export class Game {
     onHud: (state: HudState) => void,
     onLearningPanel: (state: LearningPanelState) => void,
     onResult: (result: GameResult) => void,
+    onQuickRestart: () => void,
   ) {
     const ctx = canvas.getContext("2d");
     if (ctx === null) throw new Error("Canvas 2D context is unavailable");
@@ -123,6 +125,7 @@ export class Game {
     this.onHud = onHud;
     this.onLearningPanel = onLearningPanel;
     this.onResult = onResult;
+    this.onQuickRestart = onQuickRestart;
     this.audio = new AudioManager(settings);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
@@ -154,9 +157,7 @@ export class Game {
   }
 
 
-  start(): void {
-    if (this.vocabulary.length === 0) return;
-    this.audio.unlock();
+  private resetState(): void {
     this.targets = [];
     this.particles = [];
     this.shots = [];
@@ -183,10 +184,23 @@ export class Game {
     this.spotlightElapsed = 0;
     this.previousCountdownSecond = -1;
     this.lives = this.settings.classic.lives;
+    this.running = false;
+    stopSpeech();
+    this.audio.setDanger(0);
+    this.onLearningPanel({ visible: false, vi: "", ipa: "" });
+  }
+
+  prepare(): void {
+    this.resetState();
+    this.emitHud(0);
+  }
+
+  start(): void {
+    if (this.vocabulary.length === 0) return;
+    this.resetState();
+    this.audio.unlock();
     this.running = true;
     this.lastTime = performance.now();
-    stopSpeech();
-    this.onLearningPanel({ visible: false, vi: "", ipa: "" });
 
     if (this.settings.mode === "targetRush") {
       this.prepareTargetRush();
@@ -502,7 +516,7 @@ export class Game {
 
     if (event.key === this.settings.quickRestartKey) {
       event.preventDefault();
-      this.start();
+      this.onQuickRestart();
       return;
     }
 
@@ -909,74 +923,72 @@ export class Game {
     const danger = target.state === "danger";
     const dormant = target.state === "dormant";
     const rush = this.settings.mode === "targetRush";
-    const height = rush ? 34 : 42;
-    const naturalWidth = Math.min(
-      Math.max(110, 52 + target.entry.en.length * 8.4),
-      Math.max(110, this.width - 24),
-    );
-    const displayWidth =
-      rush && !dormant && (spotlight || danger || active)
-        ? Math.max(target.width, naturalWidth)
-        : target.width;
-    const x = target.x - displayWidth / 2;
-    const y = target.y - height / 2;
+
+    const baseFontSize = rush
+      ? Math.max(
+          8,
+          Math.min(
+            dormant ? 12 : 14,
+            (Math.max(42, target.width) - 8) /
+              Math.max(1, target.entry.en.length * 0.62),
+          ),
+        )
+      : 16;
 
     ctx.save();
-    if (target.error > 0) ctx.translate(Math.sin(target.error * 120) * 4, 0);
-    ctx.globalAlpha = dormant ? 0.46 : 1;
-    ctx.fillStyle = danger
-      ? "rgba(62,18,29,.96)"
-      : spotlight
-        ? "rgba(55,44,5,.96)"
-        : active
-          ? "rgba(12,33,54,.96)"
-          : "rgba(10,18,35,.90)";
-    ctx.strokeStyle = target.error > 0
-      ? "rgba(255,103,121,.95)"
-      : danger
-        ? "rgba(255,93,113,.98)"
-        : spotlight
-          ? "rgba(255,219,91,.98)"
-          : active
-            ? "rgba(113,215,255,.9)"
-            : "rgba(140,164,204,.28)";
-    ctx.lineWidth = danger || spotlight || active ? 1.8 : 1;
-    this.roundRect(ctx, x, y, displayWidth, height, 11);
-    ctx.fill();
-    ctx.stroke();
-
-    if (spotlight || danger) {
-      ctx.strokeStyle = danger ? "rgba(255,93,113,.24)" : "rgba(255,219,91,.22)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(target.x, target.y, Math.max(displayWidth * 0.58, 64), 0, Math.PI * 2);
-      ctx.stroke();
+    if (target.error > 0) {
+      ctx.translate(Math.sin(target.error * 120) * 4, 0);
     }
 
-    const fontSize = rush && dormant ? 11 : rush ? 13 : 16;
-    ctx.font = `700 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.globalAlpha = dormant ? 0.42 : 1;
+    ctx.font = `700 ${baseFontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
+
     const prefix = target.entry.en.slice(0, target.typed);
     const suffix = target.entry.en.slice(target.typed);
     const total = ctx.measureText(target.entry.en).width;
     let textX = target.x - total / 2;
-    ctx.fillStyle = danger
-      ? "#ff92a5"
-      : spotlight
-        ? "#ffe977"
-        : active
-          ? "#74dcff"
-          : "#dce7f7";
+
+    const glowColor = target.error > 0
+      ? "rgba(255,96,122,.95)"
+      : danger
+        ? "rgba(255,86,116,.95)"
+        : spotlight
+          ? "rgba(255,224,102,.95)"
+          : "rgba(105,221,255,.92)";
+
+    if (spotlight || danger || active || target.error > 0) {
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = danger || spotlight ? 18 : 12;
+    }
+
     if (rush && dormant) {
-      ctx.fillStyle = "#a2afc2";
-      ctx.fillText(target.entry.en, textX, target.y + 1, Math.max(20, displayWidth - 12));
-    } else {
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#77869d";
+      ctx.fillText(target.entry.en, textX, target.y + 1, Math.max(20, target.width - 6));
+      ctx.restore();
+      return;
+    }
+
+    if (prefix !== "") {
+      ctx.fillStyle = danger
+        ? "#ff9aab"
+        : spotlight
+          ? "#fff09a"
+          : "#8be8ff";
       ctx.fillText(prefix, textX, target.y + 1);
       textX += ctx.measureText(prefix).width;
-      ctx.fillStyle = "#dce7f7";
-      ctx.fillText(suffix, textX, target.y + 1);
     }
+
+    if (prefix === "" && (spotlight || danger)) {
+      ctx.fillStyle = danger ? "#ff9aab" : "#fff09a";
+    } else {
+      ctx.shadowBlur = prefix === "" && active ? 10 : 0;
+      ctx.fillStyle = active ? "#e8f8ff" : "#c6d2e4";
+    }
+    ctx.fillText(suffix, textX, target.y + 1);
+
     ctx.restore();
   }
 
