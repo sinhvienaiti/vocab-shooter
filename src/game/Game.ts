@@ -920,7 +920,7 @@ export class Game {
           6.5,
           Math.min(
             dormant ? 12 : 14,
-            (Math.max(42, target.width) - 8) /
+            (Math.max(12, target.width) - 6) /
               Math.max(1, target.entry.en.length * 0.62),
           ),
         )
@@ -957,7 +957,12 @@ export class Game {
     if (rush && dormant) {
       ctx.shadowBlur = 0;
       ctx.fillStyle = "#77869d";
-      ctx.fillText(target.entry.en, textX, target.y + 1, Math.max(20, target.width - 6));
+      ctx.fillText(
+        target.entry.en,
+        textX,
+        target.y + 1,
+        Math.max(8, target.width - 4),
+      );
       ctx.restore();
       return;
     }
