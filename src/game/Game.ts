@@ -1,20 +1,20 @@
 import { AudioManager } from "../audio/AudioManager";
 import { speakEnglish, stopSpeech } from "../audio/speech";
-import type { ShooterSettings, VocabularyEntry } from "../types";
-import type { GameResult, HudState, Target } from "./mode-types";
-import { bounceDangerLevel, reflectTarget } from "./modes/BounceMode";
+import type { GameMode, ShooterSettings, VocabularyEntry } from "../types";
 import {
   classicDangerLevel,
   classicMaxTargets,
   classicSpawnInterval,
   classicSpeed,
 } from "./modes/ClassicMode";
+import { bounceDangerLevel, reflectTarget } from "./modes/BounceMode";
+import { timeAttackDangerLevel } from "./modes/TimeAttackMode";
 import {
   layoutRushTargets,
   rushDangerLevel,
   shuffledEntries,
 } from "./modes/TargetRushMode";
-import { timeAttackDangerLevel } from "./modes/TimeAttackMode";
+import type { GameResult, HudState, Target } from "./mode-types";
 
 type Star = {
   x: number;
@@ -32,15 +32,7 @@ type Particle = {
   life: number;
   maxLife: number;
   size: number;
-};
-
-type BurstRing = {
-  x: number;
-  y: number;
-  radius: number;
-  speed: number;
-  life: number;
-  maxLife: number;
+  ring: boolean;
 };
 
 type Shot = {
@@ -50,7 +42,7 @@ type Shot = {
   ty: number;
   speed: number;
   targetId: string;
-  strong: boolean;
+  lateSave: boolean;
 };
 
 type Reveal = {
@@ -62,80 +54,80 @@ type Reveal = {
   maxLife: number;
 };
 
+type LearningPanelState = {
+  visible: boolean;
+  vi: string;
+  ipa: string;
+};
+
 export class Game {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly onHud: (state: HudState) => void;
-  private readonly onLearning: (entry: VocabularyEntry | null) => void;
+  private readonly onLearningPanel: (state: LearningPanelState) => void;
   private readonly onResult: (result: GameResult) => void;
-  private readonly resizeObserver: ResizeObserver;
-  private readonly keyHandler = (event: KeyboardEvent) => this.onKey(event);
-  private readonly visibilityHandler = () => this.onVisibilityChange();
-
   private settings: ShooterSettings;
   private vocabulary: VocabularyEntry[];
-  private readonly audio: AudioManager;
-
   private targets: Target[] = [];
   private stars: Star[] = [];
   private particles: Particle[] = [];
-  private rings: BurstRing[] = [];
   private shots: Shot[] = [];
   private reveals: Reveal[] = [];
-
   private activeTargetId: string | null = null;
+  private spotlightTargetId: string | null = null;
+  private rushQueue: string[] = [];
   private animationId: number | null = null;
   private lastTime = 0;
   private spawnElapsed = 0;
-  private elapsedSec = 0;
+  private modeElapsed = 0;
+  private spotlightElapsed = 0;
+  private score = 0;
+  private lives = 3;
+  private streak = 0;
+  private maxStreak = 0;
+  private correctWords = 0;
+  private missedWords = 0;
+  private wrongKeys = 0;
+  private typedCharacters = 0;
+  private correctCharacters = 0;
+  private wordTimeTotal = 0;
+  private activeWordStartedAt = 0;
+  private lateSaves = 0;
+  private maxActiveWordsSeen = 0;
+  private failedWord = "";
+  private failureReason = "";
   private running = false;
   private width = 1;
   private height = 1;
   private dpr = 1;
-
-  private score = 0;
-  private streak = 0;
-  private maxStreak = 0;
-  private lives = 3;
-  private correctWords = 0;
-  private missedWords = 0;
-  private wrongKeys = 0;
-  private correctCharacters = 0;
-  private totalWordTime = 0;
-  private lateSaves = 0;
-  private maxActiveWords = 0;
-  private lastCountdownSecond = -1;
-
-  private rushOrder: string[] = [];
-  private rushNextIndex = 0;
-  private rushSpotlightId: string | null = null;
-  private rushFocusRemaining = 0;
+  private previousCountdownSecond = -1;
+  private readonly audio: AudioManager;
+  private readonly keyHandler = (event: KeyboardEvent) => this.onKey(event);
+  private readonly visibilityHandler = () => this.onVisibilityChange();
+  private readonly resizeObserver: ResizeObserver;
 
   constructor(
     canvas: HTMLCanvasElement,
     vocabulary: VocabularyEntry[],
     settings: ShooterSettings,
     onHud: (state: HudState) => void,
-    onLearning: (entry: VocabularyEntry | null) => void,
+    onLearningPanel: (state: LearningPanelState) => void,
     onResult: (result: GameResult) => void,
   ) {
     const ctx = canvas.getContext("2d");
     if (ctx === null) throw new Error("Canvas 2D context is unavailable");
-
     this.canvas = canvas;
     this.ctx = ctx;
     this.vocabulary = vocabulary;
     this.settings = settings;
     this.onHud = onHud;
-    this.onLearning = onLearning;
+    this.onLearningPanel = onLearningPanel;
     this.onResult = onResult;
     this.audio = new AudioManager(settings);
-
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     window.addEventListener("keydown", this.keyHandler, { passive: false });
     document.addEventListener("visibilitychange", this.visibilityHandler);
-
     this.resize();
     this.seedStars();
     this.emitHud();
@@ -155,56 +147,86 @@ export class Game {
     this.settings = settings;
     this.audio.updateSettings(settings);
     this.seedStars();
-    if (settings.mode !== "targetRush") this.onLearning(null);
   }
 
   setVocabulary(entries: VocabularyEntry[]): void {
     this.vocabulary = entries;
   }
 
+  getSettings(): ShooterSettings {
+    return this.settings;
+  }
+
   start(): void {
     if (this.vocabulary.length === 0) return;
-
-    this.audio.stop();
     this.audio.unlock();
-    stopSpeech();
-
     this.targets = [];
     this.particles = [];
-    this.rings = [];
     this.shots = [];
     this.reveals = [];
     this.activeTargetId = null;
-    this.rushOrder = [];
-    this.rushNextIndex = 0;
-    this.rushSpotlightId = null;
-    this.rushFocusRemaining = 0;
-
+    this.spotlightTargetId = null;
+    this.rushQueue = [];
     this.score = 0;
     this.streak = 0;
     this.maxStreak = 0;
-    this.lives = this.settings.classic.lives;
     this.correctWords = 0;
     this.missedWords = 0;
     this.wrongKeys = 0;
+    this.typedCharacters = 0;
     this.correctCharacters = 0;
-    this.totalWordTime = 0;
+    this.wordTimeTotal = 0;
+    this.activeWordStartedAt = 0;
     this.lateSaves = 0;
-    this.maxActiveWords = 0;
-    this.elapsedSec = 0;
+    this.maxActiveWordsSeen = 0;
+    this.failedWord = "";
+    this.failureReason = "";
     this.spawnElapsed = 0;
-    this.lastCountdownSecond = -1;
+    this.modeElapsed = 0;
+    this.spotlightElapsed = 0;
+    this.previousCountdownSecond = -1;
+    this.lives = this.settings.classic.lives;
     this.running = true;
     this.lastTime = performance.now();
+    stopSpeech();
+    this.onLearningPanel({ visible: false, vi: "", ipa: "" });
 
     if (this.settings.mode === "targetRush") {
-      this.setupTargetRush();
+      this.prepareTargetRush();
     } else {
-      this.onLearning(null);
-      this.spawnTarget();
+      this.spawnElapsed = this.currentSpawnInterval();
     }
 
     this.emitHud();
+  }
+
+  private prepareTargetRush(): void {
+    const entries = shuffledEntries(this.vocabulary, this.settings.targetRush.targetCount);
+    this.targets = entries.map((entry) => this.makeTarget(entry, "dormant"));
+    this.rushQueue = this.targets.map((target) => target.id);
+    layoutRushTargets(this.targets, this.width, this.height);
+    this.maxActiveWordsSeen = this.targets.length;
+    this.activateNextSpotlight();
+  }
+
+  private makeTarget(entry: VocabularyEntry, state: Target["state"]): Target {
+    const width = Math.max(110, Math.min(340, 52 + entry.en.length * 10));
+    return {
+      id: crypto.randomUUID(),
+      entry,
+      x: this.width / 2,
+      y: 40,
+      vx: 0,
+      vy: 0,
+      speed: 0,
+      typed: 0,
+      width,
+      pending: false,
+      error: 0,
+      state,
+      dangerRemaining: 0,
+      lateSave: false,
+    };
   }
 
   private onVisibilityChange(): void {
@@ -212,12 +234,9 @@ export class Game {
       if (this.animationId !== null) cancelAnimationFrame(this.animationId);
       this.animationId = null;
       stopSpeech();
-      this.audio.stop();
       return;
     }
-
     this.lastTime = performance.now();
-    if (this.running) this.audio.unlock();
     if (this.animationId === null) {
       this.animationId = requestAnimationFrame((now) => this.loop(now));
     }
@@ -231,18 +250,16 @@ export class Game {
         : this.settings.graphics === "balanced"
           ? 1.6
           : 1;
-
     this.dpr = Math.min(window.devicePixelRatio || 1, qualityCap);
     this.width = Math.max(1, rect.width);
     this.height = Math.max(1, rect.height);
     this.canvas.width = Math.round(this.width * this.dpr);
     this.canvas.height = Math.round(this.height * this.dpr);
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-
+    this.seedStars();
     if (this.settings.mode === "targetRush") {
       layoutRushTargets(this.targets, this.width, this.height);
     }
-    this.seedStars();
   }
 
   private seedStars(): void {
@@ -252,7 +269,6 @@ export class Game {
         : this.settings.graphics === "quality"
           ? 130
           : 90;
-
     this.stars = Array.from({ length: count }, () => ({
       x: Math.random() * this.width,
       y: Math.random() * this.height,
@@ -273,41 +289,23 @@ export class Game {
   private update(delta: number): void {
     this.updateStars(delta);
     this.updateParticles(delta);
-    this.updateRings(delta);
     this.updateShots(delta);
     this.updateReveals(delta);
 
-    for (const target of this.targets) {
-      target.error = Math.max(0, target.error - delta);
+    if (!this.running || this.vocabulary.length === 0) {
+      this.audio.setDanger(0);
+      return;
     }
 
-    if (!this.running || this.vocabulary.length === 0) return;
+    this.modeElapsed += delta;
 
-    this.elapsedSec += delta;
-
-    switch (this.settings.mode) {
-      case "classic":
-        this.updateClassic(delta);
-        break;
-      case "bounce":
-        this.updateBounce(delta);
-        break;
-      case "timeAttack":
-        this.updateTimeAttack(delta);
-        break;
-      case "targetRush":
-        this.updateTargetRush(delta);
-        break;
+    if (this.settings.mode === "targetRush") {
+      this.updateTargetRush(delta);
+    } else {
+      this.updateSpawnedModes(delta);
     }
 
-    if (!this.running) return;
-
-    this.maxActiveWords = Math.max(
-      this.maxActiveWords,
-      this.targets.filter((target) => !target.pending).length,
-    );
-
-    const danger = this.dangerLevel();
+    const danger = this.getDangerLevel();
     this.audio.setDanger(danger);
     this.emitHud(danger);
   }
@@ -322,189 +320,180 @@ export class Game {
     }
   }
 
-  private updateClassic(delta: number): void {
-    this.spawnElapsed += delta * 1000;
-    const interval = classicSpawnInterval(this.settings, this.score);
-    const activeCount = this.targets.filter((target) => !target.pending).length;
+  private updateSpawnedModes(delta: number): void {
+    if (this.settings.mode === "timeAttack") {
+      const remaining = Math.max(0, this.settings.timeAttack.durationSec - this.modeElapsed);
+      const second = Math.ceil(remaining);
+      if (second <= 5 && second !== this.previousCountdownSecond && second > 0) {
+        this.audio.playCountdown();
+        this.previousCountdownSecond = second;
+      }
+      if (remaining <= 0) {
+        this.finishRun("Time complete");
+        return;
+      }
+    }
 
+    this.spawnElapsed += delta * 1000;
+    const maxTargets = this.currentMaxTargets();
     if (
-      this.spawnElapsed >= interval &&
-      activeCount < classicMaxTargets(this.score)
+      this.spawnElapsed >= this.currentSpawnInterval() &&
+      this.targets.filter((target) => !target.pending).length < maxTargets
     ) {
       this.spawnTarget();
       this.spawnElapsed = 0;
     }
 
     for (const target of [...this.targets]) {
+      target.error = Math.max(0, target.error - delta);
       if (target.pending) continue;
-      target.y += target.speed * delta;
-      if (target.y > this.height - 86) {
-        this.removeTarget(target.id);
-        this.missedWords++;
-        this.streak = 0;
-        this.lives--;
-        this.audio.playImpact();
 
-        if (this.lives <= 0) {
-          this.finishRun("Out of lives", target.entry.en);
-          return;
+      if (this.settings.mode === "bounce") {
+        target.x += target.vx * delta;
+        target.y += target.vy * delta;
+        reflectTarget(target, this.width, this.height);
+        continue;
+      }
+
+      target.y += target.speed * delta;
+      if (target.y > this.height - 92) {
+        if (this.settings.mode === "classic") {
+          this.classicTargetEscaped(target);
+        } else {
+          this.timeAttackTargetMissed(target);
         }
       }
     }
-  }
 
-  private updateBounce(delta: number): void {
-    this.spawnElapsed += delta * 1000;
+    const live = this.targets.filter((target) => !target.pending).length;
+    this.maxActiveWordsSeen = Math.max(this.maxActiveWordsSeen, live);
 
-    if (this.spawnElapsed >= this.settings.bounce.spawnIntervalMs) {
-      const activeCount = this.targets.filter((target) => !target.pending).length;
-      if (activeCount >= this.settings.bounce.maxActiveWords) {
-        this.finishRun("Too many words on screen");
-        return;
-      }
-      this.spawnTarget();
-      this.spawnElapsed = 0;
-    }
-
-    for (const target of this.targets) {
-      if (target.pending) continue;
-      target.x += target.vx * delta;
-      target.y += target.vy * delta;
-      reflectTarget(target, this.width, this.height);
-    }
-  }
-
-  private updateTimeAttack(delta: number): void {
-    const remaining = this.settings.timeAttack.durationSec - this.elapsedSec;
-    if (remaining <= 0) {
-      this.finishRun("Time complete");
-      return;
-    }
-
-    const second = Math.ceil(remaining);
-    if (second <= 5 && second !== this.lastCountdownSecond) {
-      this.lastCountdownSecond = second;
-      this.audio.playCountdown();
-    }
-
-    this.spawnElapsed += delta * 1000;
-    if (
-      this.spawnElapsed >= this.settings.timeAttack.spawnIntervalMs &&
-      this.targets.filter((target) => !target.pending).length < 7
-    ) {
-      this.spawnTarget();
-      this.spawnElapsed = 0;
-    }
-
-    for (const target of [...this.targets]) {
-      if (target.pending) continue;
-      target.y += target.speed * delta;
-      if (target.y > this.height - 86) {
-        this.removeTarget(target.id);
-        this.missedWords++;
-        this.streak = 0;
-      }
+    if (this.settings.mode === "bounce" && live > this.settings.bounce.maxActiveWords) {
+      this.failedWord = "";
+      this.finishRun("Word limit exceeded");
     }
   }
 
   private updateTargetRush(delta: number): void {
-    for (const target of this.targets) {
-      if (target.state !== "danger" || target.pending) continue;
+    this.spotlightElapsed += delta;
 
+    const spotlight = this.targetById(this.spotlightTargetId);
+    if (
+      spotlight !== null &&
+      !spotlight.pending &&
+      spotlight.state === "spotlight" &&
+      this.spotlightElapsed >= this.settings.targetRush.focusWindowSec
+    ) {
+      spotlight.state = "danger";
+      spotlight.dangerRemaining = this.settings.targetRush.impactWindowSec;
+      spotlight.lateSave = true;
+      this.spotlightTargetId = null;
+      this.spotlightElapsed = 0;
+      if (this.activeTargetId === spotlight.id && spotlight.typed === 0) {
+        this.activeTargetId = null;
+      }
+      this.activateNextSpotlight();
+    } else if (
+      spotlight === null &&
+      this.rushQueue.length > 0 &&
+      this.spotlightElapsed >= this.settings.targetRush.focusWindowSec
+    ) {
+      this.spotlightElapsed = 0;
+      this.activateNextSpotlight();
+    }
+
+    for (const target of [...this.targets]) {
+      target.error = Math.max(0, target.error - delta);
+      if (target.pending || target.state !== "danger") continue;
+      target.dangerRemaining -= delta;
       const remaining = Math.max(0.001, target.dangerRemaining);
       const playerX = this.width / 2;
-      const playerY = this.height - 48;
-      const fraction = Math.min(1, delta / remaining);
-      target.x += (playerX - target.x) * fraction;
-      target.y += (playerY - target.y) * fraction;
-      target.dangerRemaining -= delta;
+      const playerY = this.height - 58;
+      target.x += ((playerX - target.x) / remaining) * delta;
+      target.y += ((playerY - target.y) / remaining) * delta;
 
-      if (target.dangerRemaining <= 0) {
+      if (target.dangerRemaining <= 0 || Math.hypot(playerX - target.x, playerY - target.y) < 22) {
+        this.failedWord = target.entry.en;
         this.audio.playImpact();
         this.addExplosion(playerX, playerY, true);
-        this.finishRun("Target hit the player", target.entry.en);
+        this.finishRun("Target hit the player");
         return;
       }
     }
 
-    if (this.rushSpotlightId !== null) {
-      this.rushFocusRemaining -= delta;
-      if (this.rushFocusRemaining <= 0) {
-        const spotlight = this.spotlightTarget();
-        if (spotlight !== null && !spotlight.pending) {
-          spotlight.state = "danger";
-          spotlight.dangerRemaining = this.settings.targetRush.impactWindowSec;
-          spotlight.lateSave = true;
-        }
-
-        this.rushSpotlightId = null;
-        this.activateNextRushTarget();
-      }
+    if (
+      this.running &&
+      this.spotlightTargetId === null &&
+      this.rushQueue.length === 0 &&
+      this.targets.every((target) => target.pending || target.state === "dormant")
+    ) {
+      this.finishRun("Target set complete");
+      return;
     }
 
-    if (this.rushNextIndex >= this.rushOrder.length && this.targets.length === 0) {
+    if (
+      this.running &&
+      this.rushQueue.length === 0 &&
+      this.spotlightTargetId === null &&
+      this.targets.every((target) => target.pending)
+    ) {
       this.finishRun("Target set complete");
     }
   }
 
-  private setupTargetRush(): void {
-    const entries = shuffledEntries(
-      this.vocabulary,
-      this.settings.targetRush.targetCount,
-    );
-
-    this.targets = entries.map((entry) => this.createTarget(entry, "dormant"));
-    this.rushOrder = this.targets.map((target) => target.id);
-    layoutRushTargets(this.targets, this.width, this.height);
-    this.maxActiveWords = this.targets.length;
-    this.activateNextRushTarget();
-  }
-
-  private activateNextRushTarget(): void {
-    while (this.rushNextIndex < this.rushOrder.length) {
-      const id = this.rushOrder[this.rushNextIndex];
-      this.rushNextIndex++;
-      if (id === undefined) continue;
-
-      const target = this.targets.find((item) => item.id === id);
-      if (target === undefined || target.pending) continue;
-
+  private activateNextSpotlight(): void {
+    while (this.rushQueue.length > 0) {
+      const id = this.rushQueue.shift();
+      const target = this.targetById(id ?? null);
+      if (target === null || target.pending) continue;
       target.state = "spotlight";
       target.typed = 0;
-      target.startedAt = this.elapsedSec;
-      this.rushSpotlightId = target.id;
-      this.rushFocusRemaining = this.settings.targetRush.focusWindowSec;
-      this.onLearning(target.entry);
+      this.spotlightTargetId = target.id;
+      this.spotlightElapsed = 0;
+      this.onLearningPanel({
+        visible: true,
+        vi: target.entry.vi,
+        ipa: target.entry.ipa,
+      });
       speakEnglish(target.entry.en, this.settings);
       return;
     }
 
-    this.rushSpotlightId = null;
-    this.rushFocusRemaining = 0;
+    this.spotlightTargetId = null;
+    this.onLearningPanel({ visible: false, vi: "", ipa: "" });
+  }
+
+  private currentSpawnInterval(): number {
+    if (this.settings.mode === "classic") {
+      return classicSpawnInterval(this.settings, this.score);
+    }
+    if (this.settings.mode === "bounce") return this.settings.bounce.spawnIntervalMs;
+    if (this.settings.mode === "timeAttack") return this.settings.timeAttack.spawnIntervalMs;
+    return 1000;
+  }
+
+  private currentMaxTargets(): number {
+    if (this.settings.mode === "classic") return classicMaxTargets(this.settings, this.score);
+    if (this.settings.mode === "bounce") return this.settings.bounce.maxActiveWords + 1;
+    if (this.settings.mode === "timeAttack") return 7;
+    return 0;
   }
 
   private spawnTarget(): void {
-    const entry = this.randomEntry();
-    if (entry === null) return;
-
-    const target = this.createTarget(entry, "normal");
+    const entry = this.vocabulary[Math.floor(Math.random() * this.vocabulary.length)];
+    if (entry === undefined) return;
+    const target = this.makeTarget(entry, "normal");
+    const margin = target.width / 2 + 18;
+    target.x = margin + Math.random() * Math.max(1, this.width - margin * 2);
 
     if (this.settings.mode === "bounce") {
-      const margin = target.width / 2 + 16;
-      target.x = margin + Math.random() * Math.max(1, this.width - margin * 2);
-      target.y = 52 + Math.random() * Math.max(1, this.height - 160);
-
-      let angle = Math.random() * Math.PI * 2;
-      for (let attempt = 0; attempt < 8; attempt++) {
-        if (Math.abs(Math.cos(angle)) > 0.28 && Math.abs(Math.sin(angle)) > 0.28) break;
-        angle = Math.random() * Math.PI * 2;
-      }
-
+      const angle = Math.PI * 0.18 + Math.random() * Math.PI * 1.64;
+      target.y = 46 + Math.random() * Math.max(1, this.height - 150);
       target.vx = Math.cos(angle) * this.settings.bounce.speed;
       target.vy = Math.sin(angle) * this.settings.bounce.speed;
+      if (Math.abs(target.vx) < 18) target.vx = target.vx < 0 ? -18 : 18;
+      if (Math.abs(target.vy) < 18) target.vy = target.vy < 0 ? -18 : 18;
     } else {
-      const margin = target.width / 2 + 20;
-      target.x = margin + Math.random() * Math.max(1, this.width - margin * 2);
       target.y = 38;
       target.speed =
         this.settings.mode === "classic"
@@ -515,33 +504,16 @@ export class Game {
     this.targets.push(target);
   }
 
-  private createTarget(entry: VocabularyEntry, state: Target["state"]): Target {
-    return {
-      id: crypto.randomUUID(),
-      entry,
-      x: this.width / 2,
-      y: 40,
-      vx: 0,
-      vy: 0,
-      speed: 0,
-      typed: 0,
-      width: Math.max(115, Math.min(340, 54 + entry.en.length * 11)),
-      pending: false,
-      error: 0,
-      state,
-      dangerRemaining: 0,
-      lateSave: false,
-      startedAt: this.elapsedSec,
-    };
-  }
-
-  private randomEntry(): VocabularyEntry | null {
-    if (this.vocabulary.length === 0) return null;
-    return this.vocabulary[Math.floor(Math.random() * this.vocabulary.length)] ?? null;
-  }
-
   private onKey(event: KeyboardEvent): void {
-    if (event.metaKey || event.ctrlKey || event.altKey || this.isFormInteraction(event.target)) {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+    const eventTarget = event.target;
+    if (
+      eventTarget instanceof HTMLInputElement ||
+      eventTarget instanceof HTMLTextAreaElement ||
+      eventTarget instanceof HTMLSelectElement ||
+      document.querySelector("dialog[open]") !== null
+    ) {
       return;
     }
 
@@ -552,9 +524,10 @@ export class Game {
     }
 
     const unlockKey = this.settings.quickRestartKey === "Tab" ? "Escape" : "Tab";
-    if (event.key === unlockKey && this.running) {
+    if (event.key === unlockKey) {
       event.preventDefault();
       this.activeTargetId = null;
+      this.activeWordStartedAt = 0;
       this.emitHud();
       return;
     }
@@ -562,7 +535,6 @@ export class Game {
     if (!this.running) return;
 
     const active = this.activeTarget();
-
     if (event.key === "Backspace") {
       if (active !== null && active.typed > 0) {
         active.typed--;
@@ -574,12 +546,13 @@ export class Game {
 
     if (event.key.length !== 1) return;
     event.preventDefault();
-
+    this.typedCharacters++;
     const key = event.key.toLocaleLowerCase("en-US");
-    let target = active;
 
+    let target = active;
     if (target === null) {
-      target = this.findTargetForKey(key);
+      const candidates = this.typableTargets(key);
+      target = candidates[0] ?? null;
       if (target === null) {
         this.wrongKeys++;
         this.streak = 0;
@@ -588,6 +561,7 @@ export class Game {
         return;
       }
       this.activeTargetId = target.id;
+      this.activeWordStartedAt = performance.now();
     }
 
     const expected = target.entry.en[target.typed]?.toLocaleLowerCase("en-US");
@@ -600,136 +574,127 @@ export class Game {
       return;
     }
 
-    target.typed++;
     this.correctCharacters++;
-
+    target.typed++;
     if (target.typed >= target.entry.en.length) {
       this.completeTarget(target);
     }
-
     this.emitHud();
   }
 
-  private isFormInteraction(target: EventTarget | null): boolean {
-    return (
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target instanceof HTMLSelectElement ||
-      document.querySelector("dialog[open]") !== null
-    );
-  }
-
-  private findTargetForKey(key: string): Target | null {
-    const firstLetterMatches = this.targets.filter(
-      (target) =>
-        !target.pending &&
-        target.entry.en[0]?.toLocaleLowerCase("en-US") === key,
-    );
+  private typableTargets(key: string): Target[] {
+    const firstMatches = this.targets.filter((target) => {
+      if (target.pending) return false;
+      if (target.entry.en[0]?.toLocaleLowerCase("en-US") !== key) return false;
+      if (this.settings.mode !== "targetRush") return true;
+      return target.state === "spotlight" || target.state === "danger";
+    });
 
     if (this.settings.mode === "targetRush") {
-      return (
-        firstLetterMatches
-          .filter((target) => target.state === "danger" || target.state === "spotlight")
-          .sort((a, b) => {
-            if (a.state === "danger" && b.state !== "danger") return -1;
-            if (b.state === "danger" && a.state !== "danger") return 1;
-            return a.dangerRemaining - b.dangerRemaining;
-          })[0] ?? null
-      );
+      return firstMatches.sort((a, b) => {
+        const aDanger = a.state === "danger";
+        const bDanger = b.state === "danger";
+        if (aDanger !== bDanger) return aDanger ? -1 : 1;
+        if (aDanger && bDanger) return a.dangerRemaining - b.dangerRemaining;
+        return a.id === this.spotlightTargetId ? -1 : 1;
+      });
     }
 
-    if (this.settings.mode === "bounce") {
-      return firstLetterMatches[0] ?? null;
-    }
-
-    return firstLetterMatches.sort((a, b) => b.y - a.y)[0] ?? null;
+    return firstMatches.sort((a, b) => b.y - a.y);
   }
 
   private activeTarget(): Target | null {
-    if (this.activeTargetId === null) return null;
-    const target = this.targets.find((item) => item.id === this.activeTargetId) ?? null;
-
-    if (
-      target !== null &&
-      this.settings.mode === "targetRush" &&
-      target.state !== "spotlight" &&
-      target.state !== "danger"
-    ) {
-      this.activeTargetId = null;
-      return null;
-    }
-
-    return target;
+    return this.targetById(this.activeTargetId);
   }
 
-  private spotlightTarget(): Target | null {
-    if (this.rushSpotlightId === null) return null;
-    return this.targets.find((target) => target.id === this.rushSpotlightId) ?? null;
+  private targetById(id: string | null): Target | null {
+    if (id === null) return null;
+    return this.targets.find((target) => target.id === id) ?? null;
   }
 
   private completeTarget(target: Target): void {
     target.pending = true;
     target.state = "pending";
-    if (this.activeTargetId === target.id) this.activeTargetId = null;
-
+    this.activeTargetId = null;
+    const elapsed =
+      this.activeWordStartedAt > 0 ? Math.max(0, (performance.now() - this.activeWordStartedAt) / 1000) : 0;
+    this.wordTimeTotal += elapsed;
+    this.activeWordStartedAt = 0;
     this.correctWords++;
-    this.score += 10 + Math.min(30, this.streak * 2);
+    this.score += 10 + Math.min(25, this.streak * 2);
     this.streak++;
     this.maxStreak = Math.max(this.maxStreak, this.streak);
-    this.totalWordTime += Math.max(0, this.elapsedSec - target.startedAt);
 
-    const strong = target.lateSave;
-    if (strong) {
+    const isRush = this.settings.mode === "targetRush";
+    const lateSave = isRush && target.lateSave;
+    if (lateSave) {
       this.lateSaves++;
       this.audio.playLateSave();
     }
-
     this.audio.playShoot();
 
-    if (this.settings.mode !== "targetRush") {
+    if (!isRush) {
       speakEnglish(target.entry.en, this.settings);
     }
 
     this.shots.push({
       x: this.width / 2,
-      y: this.height - 58,
+      y: this.height - 62,
       tx: target.x,
       ty: target.y,
-      speed: strong ? 1320 : 1080,
+      speed: 1050,
       targetId: target.id,
-      strong,
+      lateSave,
     });
+
+    if (target.id === this.spotlightTargetId) {
+      this.spotlightTargetId = null;
+    }
+  }
+
+  private classicTargetEscaped(target: Target): void {
+    this.removeTarget(target.id);
+    this.missedWords++;
+    this.lives--;
+    this.streak = 0;
+    if (this.activeTargetId === target.id) this.activeTargetId = null;
+    if (this.lives <= 0) {
+      this.failedWord = target.entry.en;
+      this.finishRun("No lives remaining");
+    }
+  }
+
+  private timeAttackTargetMissed(target: Target): void {
+    this.removeTarget(target.id);
+    this.missedWords++;
+    this.streak = 0;
+    if (this.activeTargetId === target.id) this.activeTargetId = null;
   }
 
   private updateShots(delta: number): void {
     const remaining: Shot[] = [];
-
     for (const shot of this.shots) {
       const dx = shot.tx - shot.x;
       const dy = shot.ty - shot.y;
       const distance = Math.hypot(dx, dy);
       const step = shot.speed * delta;
-
       if (distance <= step || distance < 8) {
-        this.hitTarget(shot.targetId, shot.tx, shot.ty, shot.strong);
+        this.hitTarget(shot);
         continue;
       }
-
       shot.x += (dx / distance) * step;
       shot.y += (dy / distance) * step;
       remaining.push(shot);
     }
-
     this.shots = remaining;
   }
 
-  private hitTarget(targetId: string, x: number, y: number, strong: boolean): void {
-    const target = this.targets.find((item) => item.id === targetId);
-    if (target === undefined) return;
-
-    this.removeTarget(targetId);
-    this.audio.playExplosion(strong);
-    this.addExplosion(x, y, strong);
+  private hitTarget(shot: Shot): void {
+    const target = this.targetById(shot.targetId);
+    if (target === null) return;
+    const { x, y } = target;
+    this.audio.playExplosion(shot.lateSave);
+    this.addExplosion(x, y, shot.lateSave);
 
     if (this.settings.mode !== "targetRush") {
       this.reveals.push({
@@ -742,30 +707,44 @@ export class Game {
       });
     }
 
-    if (this.settings.mode === "targetRush" && this.targets.length === 0) {
-      this.finishRun("Target set complete");
-    }
+    this.removeTarget(target.id);
   }
 
   private removeTarget(id: string): void {
     this.targets = this.targets.filter((target) => target.id !== id);
     if (this.activeTargetId === id) this.activeTargetId = null;
+    if (this.spotlightTargetId === id) this.spotlightTargetId = null;
   }
 
-  private addExplosion(x: number, y: number, strong: boolean): void {
-    const baseCount =
+  private addExplosion(x: number, y: number, strong = false): void {
+    const count =
       this.settings.graphics === "performance"
-        ? 10
+        ? strong
+          ? 12
+          : 9
         : this.settings.graphics === "quality"
-          ? 30
-          : 20;
+          ? strong
+            ? 32
+            : 26
+          : strong
+            ? 22
+            : 17;
 
-    const count = strong ? Math.round(baseCount * 1.25) : baseCount;
+    this.particles.push({
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      life: 0.42,
+      maxLife: 0.42,
+      size: strong ? 18 : 14,
+      ring: true,
+    });
 
-    for (let index = 0; index < count && this.particles.length < 280; index++) {
+    for (let index = 0; index < count && this.particles.length < 260; index++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * (strong ? 190 : 145) + 45;
-      const life = Math.random() * 0.46 + 0.32;
+      const speed = Math.random() * (strong ? 185 : 145) + 35;
+      const life = Math.random() * 0.42 + 0.28;
       this.particles.push({
         x,
         y,
@@ -773,43 +752,24 @@ export class Game {
         vy: Math.sin(angle) * speed,
         life,
         maxLife: life,
-        size: Math.random() * (strong ? 4.2 : 3.2) + 1.4,
+        size: Math.random() * 3.2 + 1.4,
+        ring: false,
       });
     }
-
-    this.rings.push({
-      x,
-      y,
-      radius: 5,
-      speed: strong ? 260 : 190,
-      life: strong ? 0.46 : 0.36,
-      maxLife: strong ? 0.46 : 0.36,
-    });
   }
 
   private updateParticles(delta: number): void {
     for (let index = this.particles.length - 1; index >= 0; index--) {
       const particle = this.particles[index];
       if (particle === undefined) continue;
-
       particle.life -= delta;
-      particle.x += particle.vx * delta;
-      particle.y += particle.vy * delta;
-      particle.vx *= 0.985;
-      particle.vy *= 0.985;
-      particle.vy += 18 * delta;
-
+      if (!particle.ring) {
+        particle.x += particle.vx * delta;
+        particle.y += particle.vy * delta;
+        particle.vx *= 0.984;
+        particle.vy *= 0.984;
+      }
       if (particle.life <= 0) this.particles.splice(index, 1);
-    }
-  }
-
-  private updateRings(delta: number): void {
-    for (let index = this.rings.length - 1; index >= 0; index--) {
-      const ring = this.rings[index];
-      if (ring === undefined) continue;
-      ring.life -= delta;
-      ring.radius += ring.speed * delta;
-      if (ring.life <= 0) this.rings.splice(index, 1);
     }
   }
 
@@ -823,106 +783,93 @@ export class Game {
     }
   }
 
-  private dangerLevel(): number {
-    switch (this.settings.mode) {
-      case "classic":
-        return classicDangerLevel(
-          this.targets,
-          this.height,
-          this.lives,
-          this.settings.classic.lives,
-        );
-      case "bounce":
-        return bounceDangerLevel(this.targets, this.settings);
-      case "timeAttack":
-        return timeAttackDangerLevel(
-          Math.max(0, this.settings.timeAttack.durationSec - this.elapsedSec),
-          this.settings,
-        );
-      case "targetRush":
-        return rushDangerLevel(
-          this.targets,
-          this.settings.targetRush.impactWindowSec,
-        );
+  private getDangerLevel(): number {
+    if (this.settings.mode === "classic") {
+      return classicDangerLevel(this.targets, this.height, this.lives, this.settings.classic.lives);
     }
+    if (this.settings.mode === "bounce") {
+      return bounceDangerLevel(this.targets, this.settings);
+    }
+    if (this.settings.mode === "timeAttack") {
+      const remaining = Math.max(0, this.settings.timeAttack.durationSec - this.modeElapsed);
+      return timeAttackDangerLevel(remaining, this.settings);
+    }
+    return rushDangerLevel(this.targets, this.settings.targetRush.impactWindowSec);
   }
 
-  private metric(): { label: string; value: string } {
-    switch (this.settings.mode) {
-      case "classic":
-        return {
-          label: "LIVES",
-          value: `${this.lives}/${this.settings.classic.lives}`,
-        };
-      case "bounce":
-        return {
-          label: "WORDS",
-          value: `${this.targets.filter((target) => !target.pending).length}/${this.settings.bounce.maxActiveWords}`,
-        };
-      case "timeAttack":
-        return {
-          label: "TIME",
-          value: `${Math.max(0, Math.ceil(this.settings.timeAttack.durationSec - this.elapsedSec))}s`,
-        };
-      case "targetRush":
-        return {
-          label: "TARGET",
-          value: `${Math.min(this.rushNextIndex, this.rushOrder.length)}/${this.rushOrder.length}`,
-        };
-    }
+  private finishRun(reason: string): void {
+    if (!this.running) return;
+    this.running = false;
+    this.failureReason = reason;
+    this.activeTargetId = null;
+    stopSpeech();
+    this.audio.setDanger(0);
+    this.onLearningPanel({ visible: false, vi: "", ipa: "" });
+    this.emitHud(0);
+    this.onResult(this.makeResult());
   }
 
-  private emitHud(dangerLevel = this.dangerLevel()): void {
-    const metric = this.metric();
+  private makeResult(): GameResult {
+    const elapsed =
+      this.settings.mode === "timeAttack"
+        ? this.settings.timeAttack.durationSec
+        : this.modeElapsed;
+    const minutes = Math.max(elapsed / 60, 1 / 60);
+    const accuracy =
+      this.typedCharacters === 0
+        ? 100
+        : (this.correctCharacters / this.typedCharacters) * 100;
+    return {
+      mode: this.settings.mode,
+      score: this.score,
+      correctWords: this.correctWords,
+      missedWords: this.missedWords,
+      wrongKeys: this.wrongKeys,
+      accuracy,
+      wpm: this.correctCharacters / 5 / minutes,
+      characters: this.correctCharacters,
+      maxStreak: this.maxStreak,
+      elapsedSec: elapsed,
+      averageWordSec: this.correctWords === 0 ? 0 : this.wordTimeTotal / this.correctWords,
+      lateSaves: this.lateSaves,
+      maxActiveWords: this.maxActiveWordsSeen,
+      failedWord: this.failedWord,
+      failureReason: this.failureReason,
+    };
+  }
+
+  private emitHud(dangerLevel = this.getDangerLevel()): void {
     const active = this.activeTarget();
-    const spotlight = this.spotlightTarget();
-
+    const metric = this.currentMetric();
     this.onHud({
       score: this.score,
       streak: this.streak,
       metricLabel: metric.label,
       metricValue: metric.value,
-      active:
-        active?.entry.en ??
-        spotlight?.entry.en ??
-        "",
+      active: active?.entry.en ?? "",
       running: this.running,
       mode: this.settings.mode,
       dangerLevel,
     });
   }
 
-  private finishRun(failureReason: string, failedWord = ""): void {
-    if (!this.running) return;
-
-    this.running = false;
-    this.activeTargetId = null;
-    stopSpeech();
-    this.audio.setDanger(0);
-    this.audio.stop();
-
-    const attempts = this.correctCharacters + this.wrongKeys;
-    const elapsed = Math.max(0.001, this.elapsedSec);
-
-    this.onResult({
-      mode: this.settings.mode,
-      score: this.score,
-      correctWords: this.correctWords,
-      missedWords: this.missedWords,
-      wrongKeys: this.wrongKeys,
-      accuracy: attempts === 0 ? 100 : (this.correctCharacters / attempts) * 100,
-      wpm: (this.correctCharacters / 5) / (elapsed / 60),
-      characters: this.correctCharacters,
-      maxStreak: this.maxStreak,
-      elapsedSec: this.elapsedSec,
-      averageWordSec: this.correctWords === 0 ? 0 : this.totalWordTime / this.correctWords,
-      lateSaves: this.lateSaves,
-      maxActiveWords: this.maxActiveWords,
-      failedWord,
-      failureReason,
-    });
-
-    this.emitHud(0);
+  private currentMetric(): { label: string; value: string } {
+    if (this.settings.mode === "classic") {
+      return {
+        label: "LIVES",
+        value: "♥".repeat(Math.max(0, this.lives)) + "♡".repeat(Math.max(0, this.settings.classic.lives - this.lives)),
+      };
+    }
+    if (this.settings.mode === "bounce") {
+      const live = this.targets.filter((target) => !target.pending).length;
+      return { label: "WORDS", value: `${live}/${this.settings.bounce.maxActiveWords}` };
+    }
+    if (this.settings.mode === "timeAttack") {
+      const remaining = Math.max(0, this.settings.timeAttack.durationSec - this.modeElapsed);
+      return { label: "TIME", value: `${remaining.toFixed(1)}s` };
+    }
+    const remaining = this.rushQueue.length + (this.spotlightTargetId === null ? 0 : 1);
+    return { label: "QUEUE", value: String(remaining) };
   }
 
   private draw(): void {
@@ -945,10 +892,8 @@ export class Game {
 
     for (const target of this.targets) this.drawTarget(target);
     for (const shot of this.shots) this.drawShot(shot);
-    for (const ring of this.rings) this.drawRing(ring);
     for (const particle of this.particles) this.drawParticle(particle);
     for (const reveal of this.reveals) this.drawReveal(reveal);
-
     this.drawPlayer();
 
     if (!this.running) this.drawIdleOverlay();
@@ -956,133 +901,111 @@ export class Game {
 
   private drawTarget(target: Target): void {
     const ctx = this.ctx;
-    const locked = target.id === this.activeTargetId;
-    const rush = this.settings.mode === "targetRush";
-    const height = rush ? 30 : 42;
+    const active = target.id === this.activeTargetId;
+    const spotlight = target.state === "spotlight";
+    const danger = target.state === "danger";
+    const dormant = target.state === "dormant";
+    const height = this.settings.mode === "targetRush" ? 34 : 42;
     const x = target.x - target.width / 2;
     const y = target.y - height / 2;
 
     ctx.save();
-
-    if (target.error > 0) {
-      ctx.translate(Math.sin(target.error * 120) * 4, 0);
-    }
-
-    if (target.state === "danger") {
-      ctx.fillStyle = "rgba(72,14,24,.94)";
-      ctx.strokeStyle = "rgba(255,95,112,.95)";
-    } else if (target.state === "spotlight") {
-      ctx.fillStyle = "rgba(72,53,7,.96)";
-      ctx.strokeStyle = "rgba(255,211,93,.98)";
-    } else if (locked) {
-      ctx.fillStyle = "rgba(12,33,54,.96)";
-      ctx.strokeStyle = "rgba(113,215,255,.9)";
-    } else {
-      ctx.fillStyle = rush ? "rgba(10,18,35,.55)" : "rgba(10,18,35,.90)";
-      ctx.strokeStyle = rush ? "rgba(140,164,204,.13)" : "rgba(140,164,204,.28)";
-    }
-
-    if (target.pending) ctx.globalAlpha = 0.5;
-    if (target.state === "dormant") ctx.globalAlpha = 0.48;
-
-    ctx.lineWidth = target.state === "spotlight" || target.state === "danger" || locked ? 1.7 : 1;
-    this.roundRect(ctx, x, y, target.width, height, rush ? 9 : 12);
+    if (target.error > 0) ctx.translate(Math.sin(target.error * 120) * 4, 0);
+    ctx.globalAlpha = dormant ? 0.46 : 1;
+    ctx.fillStyle = danger
+      ? "rgba(62,18,29,.96)"
+      : spotlight
+        ? "rgba(55,44,5,.96)"
+        : active
+          ? "rgba(12,33,54,.96)"
+          : "rgba(10,18,35,.90)";
+    ctx.strokeStyle = target.error > 0
+      ? "rgba(255,103,121,.95)"
+      : danger
+        ? "rgba(255,93,113,.98)"
+        : spotlight
+          ? "rgba(255,219,91,.98)"
+          : active
+            ? "rgba(113,215,255,.9)"
+            : "rgba(140,164,204,.28)";
+    ctx.lineWidth = danger || spotlight || active ? 1.8 : 1;
+    this.roundRect(ctx, x, y, target.width, height, 11);
     ctx.fill();
     ctx.stroke();
 
-    if (target.state === "spotlight") {
-      ctx.strokeStyle = "rgba(255,211,93,.22)";
+    if (spotlight || danger) {
+      ctx.strokeStyle = danger ? "rgba(255,93,113,.24)" : "rgba(255,219,91,.22)";
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(target.x, target.y, Math.max(target.width * 0.58, 54), 0, Math.PI * 2);
+      ctx.arc(target.x, target.y, Math.max(target.width * 0.58, 64), 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    if (target.state === "danger") {
-      const ratio = Math.max(
-        0,
-        Math.min(1, target.dangerRemaining / this.settings.targetRush.impactWindowSec),
-      );
-      ctx.fillStyle = "rgba(255,95,112,.72)";
-      ctx.fillRect(x + 6, y + height - 4, (target.width - 12) * ratio, 2);
-    }
-
-    if (rush) {
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = "700 12px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.fillStyle =
-        target.state === "spotlight"
-          ? "#ffe79a"
-          : target.state === "danger"
-            ? "#ffd3d8"
-            : "#cbd7e8";
-      ctx.fillText(target.entry.en, target.x, target.y, target.width - 12);
-
-      if (target.typed > 0) {
-        const progress = target.typed / Math.max(1, target.entry.en.length);
-        ctx.fillStyle = "#71d7ff";
-        ctx.fillRect(x + 6, y + height - 4, (target.width - 12) * progress, 2);
-      }
-    } else {
-      ctx.font = "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      const prefix = target.entry.en.slice(0, target.typed);
-      const suffix = target.entry.en.slice(target.typed);
-      const total = ctx.measureText(target.entry.en).width;
-      let textX = target.x - total / 2;
-
-      ctx.fillStyle = locked ? "#74dcff" : "#dce7f7";
-      ctx.fillText(prefix, textX, target.y + 1);
-      textX += ctx.measureText(prefix).width;
-      ctx.fillStyle = "#dce7f7";
-      ctx.fillText(suffix, textX, target.y + 1);
-    }
-
+    ctx.font =
+      this.settings.mode === "targetRush"
+        ? "700 13px ui-monospace, SFMono-Regular, Menlo, monospace"
+        : "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    const prefix = target.entry.en.slice(0, target.typed);
+    const suffix = target.entry.en.slice(target.typed);
+    const total = ctx.measureText(target.entry.en).width;
+    let textX = target.x - total / 2;
+    ctx.fillStyle = danger
+      ? "#ff92a5"
+      : spotlight
+        ? "#ffe977"
+        : active
+          ? "#74dcff"
+          : "#dce7f7";
+    ctx.fillText(prefix, textX, target.y + 1);
+    textX += ctx.measureText(prefix).width;
+    ctx.fillStyle = dormant ? "#a2afc2" : "#dce7f7";
+    ctx.fillText(suffix, textX, target.y + 1);
     ctx.restore();
   }
 
   private drawShot(shot: Shot): void {
     const ctx = this.ctx;
-    ctx.strokeStyle = shot.strong
-      ? "rgba(255,224,127,.78)"
-      : "rgba(107,225,255,.55)";
-    ctx.lineWidth = shot.strong ? 3 : 2;
+    ctx.strokeStyle = shot.lateSave ? "rgba(255,232,117,.7)" : "rgba(107,225,255,.55)";
+    ctx.lineWidth = shot.lateSave ? 2.8 : 2;
     ctx.beginPath();
     ctx.moveTo(shot.x, shot.y + 10);
     ctx.lineTo(shot.x, shot.y - 12);
     ctx.stroke();
-
-    ctx.fillStyle = shot.strong ? "#fff3bd" : "#dffbff";
+    ctx.fillStyle = shot.lateSave ? "#fff5a9" : "#dffbff";
     ctx.beginPath();
-    ctx.arc(shot.x, shot.y, shot.strong ? 4 : 3.2, 0, Math.PI * 2);
+    ctx.arc(shot.x, shot.y, shot.lateSave ? 4 : 3.2, 0, Math.PI * 2);
     ctx.fill();
   }
 
   private drawParticle(particle: Particle): void {
     const alpha = Math.max(0, particle.life / particle.maxLife);
-    this.ctx.save();
-    this.ctx.globalAlpha = alpha;
-    this.ctx.fillStyle = "rgba(126,226,255,.58)";
-    this.ctx.strokeStyle = "rgba(220,249,255,.82)";
-    this.ctx.lineWidth = 0.8;
-    this.ctx.beginPath();
-    this.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-    this.ctx.fill();
-    this.ctx.stroke();
-    this.ctx.restore();
-  }
-
-  private drawRing(ring: BurstRing): void {
-    const alpha = Math.max(0, ring.life / ring.maxLife);
-    this.ctx.save();
-    this.ctx.globalAlpha = alpha * 0.75;
-    this.ctx.strokeStyle = "rgba(126,226,255,.9)";
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
-    this.ctx.stroke();
-    this.ctx.restore();
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (particle.ring) {
+      const progress = 1 - alpha;
+      ctx.strokeStyle = "rgba(120,232,255,.9)";
+      ctx.lineWidth = 2.2 * alpha + 0.5;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.size + progress * 42, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = alpha > 0.45 ? "#8cecff" : "#8b7cff";
+      ctx.beginPath();
+      ctx.ellipse(
+        particle.x,
+        particle.y,
+        particle.size * 1.35,
+        particle.size,
+        Math.atan2(particle.vy, particle.vx),
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   private drawReveal(reveal: Reveal): void {
@@ -1091,16 +1014,11 @@ export class Game {
     const alpha = Math.min(1, progress * 4);
     const viSize = 17;
     const ipaSize = 12;
-
     ctx.font = `800 ${viSize}px ui-sans-serif, system-ui`;
     const viWidth = ctx.measureText(reveal.vi).width;
     ctx.font = `600 ${ipaSize}px ui-sans-serif, system-ui`;
     const ipaWidth = ctx.measureText(reveal.ipa || " ").width;
-
-    const width = Math.min(
-      this.width - 24,
-      Math.max(150, Math.max(viWidth, ipaWidth) + 32),
-    );
+    const width = Math.min(this.width - 24, Math.max(150, Math.max(viWidth, ipaWidth) + 32));
     const height = reveal.ipa.trim() === "" ? 45 : 61;
     const x = Math.min(this.width - width - 10, Math.max(10, reveal.x - width / 2));
     const y = Math.max(12, reveal.y - height / 2);
@@ -1108,12 +1026,11 @@ export class Game {
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.fillStyle = "rgba(10,18,35,.82)";
-    ctx.strokeStyle = "rgba(113,215,255,.5)";
+    ctx.strokeStyle = "rgba(113,215,255,.48)";
     ctx.lineWidth = 1;
     this.roundRect(ctx, x, y, width, height, 15);
     ctx.fill();
     ctx.stroke();
-
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = `800 ${viSize}px ui-sans-serif, system-ui`;
@@ -1124,13 +1041,11 @@ export class Game {
       y + (reveal.ipa.trim() === "" ? 23 : 21),
       width - 24,
     );
-
     if (reveal.ipa.trim() !== "") {
       ctx.font = `600 ${ipaSize}px ui-sans-serif, system-ui`;
       ctx.fillStyle = "#91a7c7";
       ctx.fillText(reveal.ipa, x + width / 2, y + 43, width - 24);
     }
-
     ctx.restore();
   }
 
@@ -1138,10 +1053,8 @@ export class Game {
     const ctx = this.ctx;
     const x = this.width / 2;
     const y = this.height - 46;
-
     ctx.save();
     ctx.translate(x, y);
-
     ctx.fillStyle = "#77ddff";
     ctx.beginPath();
     ctx.moveTo(0, -22);
@@ -1152,39 +1065,33 @@ export class Game {
     ctx.lineTo(-16, 16);
     ctx.closePath();
     ctx.fill();
-
     ctx.fillStyle = "#8e7dff";
     ctx.beginPath();
     ctx.moveTo(-5, 17);
-    ctx.lineTo(0, 30 + Math.random() * 4);
+    ctx.lineTo(0, 32 + Math.random() * 4);
     ctx.lineTo(5, 17);
     ctx.closePath();
     ctx.fill();
-
     ctx.restore();
   }
 
   private drawIdleOverlay(): void {
     const ctx = this.ctx;
     ctx.save();
-
-    ctx.fillStyle = "rgba(3,7,16,.34)";
+    ctx.fillStyle = "rgba(3,7,16,.35)";
     ctx.fillRect(0, 0, this.width, this.height);
-
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#eaf4ff";
     ctx.font = "800 25px ui-sans-serif, system-ui";
     ctx.fillText("Ready when you are", this.width / 2, this.height / 2 - 12);
-
     ctx.fillStyle = "#8394ad";
     ctx.font = "500 13px ui-sans-serif, system-ui";
     ctx.fillText(
-      `Press Start / Restart or ${this.settings.quickRestartKey}`,
+      `Press Start or ${this.settings.quickRestartKey} to begin`,
       this.width / 2,
       this.height / 2 + 20,
     );
-
     ctx.restore();
   }
 
@@ -1206,3 +1113,5 @@ export class Game {
     ctx.closePath();
   }
 }
+
+export type { GameResult, HudState, LearningPanelState };
