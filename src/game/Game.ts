@@ -434,6 +434,7 @@ export class Game {
     }
 
     ctx.font = "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     const prefix = enemy.entry.en.slice(0, enemy.typed);
     const suffix = enemy.entry.en.slice(enemy.typed);
@@ -540,6 +541,7 @@ export class Game {
 
   private drawIdleOverlay(): void {
     const ctx = this.ctx;
+    ctx.save();
     ctx.fillStyle = "rgba(3,7,16,.35)";
     ctx.fillRect(0, 0, this.width, this.height);
     ctx.textAlign = "center";
@@ -550,6 +552,7 @@ export class Game {
     ctx.fillStyle = "#8394ad";
     ctx.font = "500 13px ui-sans-serif, system-ui";
     ctx.fillText("Press Start / Restart to begin", this.width / 2, this.height / 2 + 20);
+    ctx.restore();
   }
 
   private roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
