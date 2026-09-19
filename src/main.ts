@@ -13,6 +13,10 @@ import { parseBulkVocabulary, vocabularyToBulk } from "./ui/vocabulary-editor";
 const app = document.querySelector<HTMLDivElement>("#app");
 if (app === null) throw new Error("#app not found");
 
+function settingTitle(label: string, help: string): string {
+  return `<span class="setting-title"><span>${label}</span><span class="setting-help" tabindex="0" role="note" aria-label="${help}" data-help="${help}">?</span></span>`;
+}
+
 app.innerHTML = `
   <div class="shooter-shell">
     <header class="hud-bar">
@@ -55,6 +59,10 @@ app.innerHTML = `
 
     <main class="game-stage">
       <canvas id="gameCanvas" tabindex="0"></canvas>
+      <div id="startOverlay" class="start-overlay" aria-live="polite">
+        <strong id="startOverlayTitle">Ready when you are</strong>
+        <span id="startOverlayText">Press Start to begin</span>
+      </div>
       <div id="emptyVocabulary" class="empty-vocab hidden">Add at least one vocabulary entry before starting.</div>
     </main>
   </div>
@@ -105,45 +113,45 @@ app.innerHTML = `
 
       <h3 class="settings-section-title">General</h3>
       <div class="settings-grid">
-        <label><span>Pronunciation</span><select id="speechEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
-        <label><span>Accent</span><select id="accent"><option value="en-US">US</option><option value="en-GB">UK</option></select></label>
-        <label><span>Speech speed</span><input id="speechRate" type="range" min="0.65" max="1.4" step="0.05" /><output id="speechRateValue"></output></label>
-        <label><span>Speech volume</span><input id="volume" type="range" min="0" max="1" step="0.05" /><output id="volumeValue"></output></label>
-        <label><span>Reveal duration</span><input id="revealMs" type="range" min="700" max="5000" step="100" /><output id="revealMsValue"></output></label>
-        <label><span>Graphics</span><select id="graphics"><option value="performance">Performance</option><option value="balanced">Balanced</option><option value="quality">Quality</option></select></label>
-        <label><span>Quick restart</span><select id="quickRestartKey"><option value="Tab">Tab</option><option value="Escape">Escape</option></select></label>
-        <label><span>Background music</span><select id="musicEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
-        <label><span>Music volume</span><input id="musicVolume" type="range" min="0" max="1" step="0.05" /><output id="musicVolumeValue"></output></label>
-        <label><span>SFX volume</span><input id="sfxVolume" type="range" min="0" max="1" step="0.05" /><output id="sfxVolumeValue"></output></label>
-        <label><span>Danger audio</span><select id="dangerAudioEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
+        <label>${settingTitle("Pronunciation", "Play the English pronunciation at the learning event for the current mode.")}<select id="speechEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
+        <label>${settingTitle("Accent", "Choose the English voice accent used by browser speech.")}<select id="accent"><option value="en-US">US</option><option value="en-GB">UK</option></select></label>
+        <label>${settingTitle("Speech speed", "Adjust how quickly English pronunciation is spoken.")}<input id="speechRate" type="range" min="0.65" max="1.4" step="0.05" /><output id="speechRateValue"></output></label>
+        <label>${settingTitle("Speech volume", "Adjust pronunciation volume.")}<input id="volume" type="range" min="0" max="1" step="0.05" /><output id="volumeValue"></output></label>
+        <label>${settingTitle("Reveal duration", "Choose how long Vietnamese and IPA stay visible after a correct target.")}<input id="revealMs" type="range" min="700" max="5000" step="100" /><output id="revealMsValue"></output></label>
+        <label>${settingTitle("Graphics", "Balance particles and visual detail against rendering performance.")}<select id="graphics"><option value="performance">Performance</option><option value="balanced">Balanced</option><option value="quality">Quality</option></select></label>
+        <label>${settingTitle("Quick restart", "Reset to ready. Press another key, then the 3-second countdown starts.")}<select id="quickRestartKey"><option value="Escape">Escape</option><option value="Tab">Tab</option></select></label>
+        <label>${settingTitle("Background music", "Enable the offline procedural background music.")}<select id="musicEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
+        <label>${settingTitle("Music volume", "Adjust background music volume.")}<input id="musicVolume" type="range" min="0" max="1" step="0.05" /><output id="musicVolumeValue"></output></label>
+        <label>${settingTitle("SFX volume", "Adjust game sound-effect volume.")}<input id="sfxVolume" type="range" min="0" max="1" step="0.05" /><output id="sfxVolumeValue"></output></label>
+        <label>${settingTitle("Danger audio", "Enable warning audio when the current mode becomes dangerous.")}<select id="dangerAudioEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
       </div>
 
       <h3 class="settings-section-title">Classic Survival</h3>
       <div class="settings-grid mode-setting" data-setting-mode="classic">
-        <label><span>Lives</span><input id="classicLives" type="number" min="1" max="9" step="1" /></label>
-        <label><span>Spawn interval</span><input id="classicSpawn" type="number" min="700" max="5000" step="100" /><small>milliseconds</small></label>
-        <label><span>Enemy speed</span><input id="classicSpeed" type="number" min="15" max="120" step="1" /></label>
+        <label>${settingTitle("Lives", "Number of missed targets allowed before Classic Survival ends.")}<input id="classicLives" type="number" min="1" max="9" step="1" /></label>
+        <label>${settingTitle("Spawn interval", "Time between new target spawns.")}<input id="classicSpawn" type="number" min="700" max="5000" step="100" /><small>milliseconds</small></label>
+        <label>${settingTitle("Enemy speed", "How quickly Classic targets move toward the player.")}<input id="classicSpeed" type="number" min="15" max="120" step="1" /></label>
       </div>
 
       <h3 class="settings-section-title">Bounce / Relax</h3>
       <div class="settings-grid mode-setting" data-setting-mode="bounce">
-        <label><span>Maximum active words</span><input id="bounceMax" type="number" min="3" max="30" step="1" /></label>
-        <label><span>Spawn interval</span><input id="bounceSpawn" type="number" min="700" max="10000" step="100" /><small>milliseconds</small></label>
-        <label><span>Movement speed</span><input id="bounceSpeed" type="number" min="20" max="160" step="1" /></label>
+        <label>${settingTitle("Maximum active words", "Maximum number of Bounce words allowed on screen.")}<input id="bounceMax" type="number" min="3" max="30" step="1" /></label>
+        <label>${settingTitle("Spawn interval", "Time between new target spawns for this mode.")}<input id="bounceSpawn" type="number" min="700" max="10000" step="100" /><small>milliseconds</small></label>
+        <label>${settingTitle("Movement speed", "Movement speed of Bounce targets.")}<input id="bounceSpeed" type="number" min="20" max="160" step="1" /></label>
       </div>
 
       <h3 class="settings-section-title">Time Attack</h3>
       <div class="settings-grid mode-setting" data-setting-mode="timeAttack">
-        <label><span>Duration</span><input id="timeDuration" type="number" min="15" max="600" step="5" /><small>seconds</small></label>
-        <label><span>Spawn interval</span><input id="timeSpawn" type="number" min="600" max="5000" step="100" /><small>milliseconds</small></label>
-        <label><span>Enemy speed</span><input id="timeSpeed" type="number" min="15" max="140" step="1" /></label>
+        <label>${settingTitle("Duration", "Total length of a Time Attack run.")}<input id="timeDuration" type="number" min="15" max="600" step="5" /><small>seconds</small></label>
+        <label>${settingTitle("Spawn interval", "Time between new target spawns for this mode.")}<input id="timeSpawn" type="number" min="600" max="5000" step="100" /><small>milliseconds</small></label>
+        <label>${settingTitle("Enemy speed", "Movement speed of targets in this mode.")}<input id="timeSpeed" type="number" min="15" max="140" step="1" /></label>
       </div>
 
       <h3 class="settings-section-title">Target Rush</h3>
       <div class="settings-grid mode-setting" data-setting-mode="targetRush">
-        <label><span>Target count</span><input id="rushCount" type="number" min="5" max="100" step="1" /></label>
-        <label><span>Spotlight time</span><input id="rushFocus" type="number" min="1.5" max="6" step="0.1" /><small>seconds</small></label>
-        <label><span>Dive time</span><input id="rushImpact" type="number" min="1" max="4" step="0.1" /><small>seconds</small></label>
+        <label>${settingTitle("Target count", "Number of targets included in one Target Rush run.")}<input id="rushCount" type="number" min="5" max="100" step="1" /></label>
+        <label>${settingTitle("Spotlight time", "Time a Target Rush word stays in the safe spotlight phase.")}<input id="rushFocus" type="number" min="1.5" max="6" step="0.1" /><small>seconds</small></label>
+        <label>${settingTitle("Dive time", "Time available to save a danger target before it reaches the player.")}<input id="rushImpact" type="number" min="1" max="4" step="0.1" /><small>seconds</small></label>
       </div>
 
       <div class="dialog-footer">
@@ -201,7 +209,7 @@ function updateModeUi(): void {
     button.classList.toggle("active", button.dataset["mode"] === settings.mode);
   }
   const unlockKey = settings.quickRestartKey === "Tab" ? "Esc" : "Tab";
-  byId("shortcutHelp").textContent = `${settings.quickRestartKey} restart · ${unlockKey} unlock · Backspace corrects`;
+  byId("shortcutHelp").textContent = `${settings.quickRestartKey} ready restart · ${unlockKey} unlock · Backspace corrects`;
 }
 
 function hud(state: HudState): void {
@@ -228,7 +236,7 @@ function learningPanel(state: LearningPanelState): void {
 function showResult(result: GameResult): void {
   byId("resultTitle").textContent = `${modeName(result.mode)} complete`;
   byId("resultReason").textContent = result.failureReason;
-  byId("resultShortcut").textContent = `${settings.quickRestartKey} restarts instantly`;
+  byId("resultShortcut").textContent = `${settings.quickRestartKey} resets to ready`;
 
   const items: Array<[string, string]> = [
     ["Score", String(result.score)],
@@ -267,21 +275,82 @@ function showResult(result: GameResult): void {
   resultDialog.showModal();
 }
 
-const game = new Game(canvas, vocabulary, settings, hud, learningPanel, showResult);
+let countdownTimer: number | null = null;
+let countdownActive = false;
+let readyForKey = false;
 
-function startGame(): void {
+function clearCountdown(): void {
+  if (countdownTimer === null) return;
+  window.clearTimeout(countdownTimer);
+  countdownTimer = null;
+}
+
+function setStartOverlay(title: string, text: string): void {
+  byId("startOverlayTitle").textContent = title;
+  byId("startOverlayText").textContent = text;
+  byId("startOverlay").classList.remove("hidden");
+}
+
+function hideStartOverlay(): void {
+  byId("startOverlay").classList.add("hidden");
+}
+
+const game = new Game(
+  canvas,
+  vocabulary,
+  settings,
+  hud,
+  learningPanel,
+  showResult,
+  prepareRestart,
+);
+
+function prepareRestart(): void {
+  clearCountdown();
+  countdownActive = false;
+  readyForKey = true;
+  if (resultDialog.open) resultDialog.close();
+  byId("emptyVocabulary").classList.add("hidden");
+  game.prepare();
+  setStartOverlay("Ready when you are", "Press any key to start");
+  canvas.focus();
+}
+
+function beginCountdown(): void {
   if (vocabulary.length === 0) {
     byId("emptyVocabulary").classList.remove("hidden");
     return;
   }
+
+  clearCountdown();
+  countdownActive = true;
+  readyForKey = false;
   if (resultDialog.open) resultDialog.close();
   byId("emptyVocabulary").classList.add("hidden");
-  game.start();
+  game.prepare();
   canvas.focus();
+
+  let remaining = 3;
+  const tick = (): void => {
+    setStartOverlay(String(remaining), "Get ready");
+    if (remaining === 1) {
+      countdownTimer = window.setTimeout(() => {
+        countdownTimer = null;
+        countdownActive = false;
+        hideStartOverlay();
+        game.start();
+        canvas.focus();
+      }, 1000);
+      return;
+    }
+    remaining--;
+    countdownTimer = window.setTimeout(tick, 1000);
+  };
+  tick();
 }
 
-byId<HTMLButtonElement>("startButton").addEventListener("click", startGame);
-byId<HTMLButtonElement>("resultRestart").addEventListener("click", startGame);
+byId<HTMLButtonElement>("startButton").addEventListener("click", beginCountdown);
+byId<HTMLButtonElement>("resultRestart").addEventListener("click", beginCountdown);
 byId<HTMLButtonElement>("closeResult").addEventListener("click", () => resultDialog.close());
 
 for (const button of document.querySelectorAll<HTMLButtonElement>(".mode-tabs button")) {
@@ -292,7 +361,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(".mode-tabs bu
     saveSettings(settings);
     game.updateSettings(settings);
     updateModeUi();
-    startGame();
+    prepareRestart();
   });
 }
 
@@ -535,10 +604,17 @@ byId<HTMLButtonElement>("saveSettings").addEventListener("click", () => {
 });
 
 window.addEventListener("keydown", (event) => {
-  if (!resultDialog.open || event.key !== settings.quickRestartKey) return;
+  if (event.key === settings.quickRestartKey) return;
+  if (vocabularyDialog.open || settingsDialog.open || resultDialog.open) return;
+  if (!readyForKey || countdownActive) return;
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+
   event.preventDefault();
-  startGame();
+  beginCountdown();
 });
 
 updateModeUi();
-window.addEventListener("beforeunload", () => game.destroy());
+window.addEventListener("beforeunload", () => {
+  clearCountdown();
+  game.destroy();
+});
