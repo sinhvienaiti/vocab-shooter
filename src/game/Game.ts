@@ -1105,20 +1105,8 @@ export class Game {
   private drawIdleOverlay(): void {
     const ctx = this.ctx;
     ctx.save();
-    ctx.fillStyle = "rgba(3,7,16,.35)";
+    ctx.fillStyle = "rgba(3,7,16,.26)";
     ctx.fillRect(0, 0, this.width, this.height);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#eaf4ff";
-    ctx.font = "800 25px ui-sans-serif, system-ui";
-    ctx.fillText("Ready when you are", this.width / 2, this.height / 2 - 12);
-    ctx.fillStyle = "#8394ad";
-    ctx.font = "500 13px ui-sans-serif, system-ui";
-    ctx.fillText(
-      `Press Start or ${this.settings.quickRestartKey} to begin`,
-      this.width / 2,
-      this.height / 2 + 20,
-    );
     ctx.restore();
   }
 
