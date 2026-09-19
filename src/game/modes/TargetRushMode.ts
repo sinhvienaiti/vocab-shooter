@@ -25,24 +25,23 @@ export function shuffledEntries(entries: VocabularyEntry[], count: number): Voca
 
 export function layoutRushTargets(targets: Target[], width: number, height: number): void {
   if (targets.length === 0) return;
-  const usableTop = 30;
-  const usableBottom = Math.max(usableTop + 120, height - 96);
+
+  const usableTop = 28;
+  const usableBottom = Math.max(usableTop + 140, height - 92);
   const usableHeight = usableBottom - usableTop;
-  const columns = Math.max(
-    3,
-    Math.ceil(Math.sqrt(targets.length * Math.max(1.2, width / Math.max(1, usableHeight)))),
-  );
-  const rows = Math.ceil(targets.length / columns);
+  const rows = Math.min(4, Math.max(1, targets.length));
+  const columns = Math.max(1, Math.ceil(targets.length / rows));
   const cellWidth = width / columns;
-  const cellHeight = usableHeight / Math.max(1, rows);
+  const cellHeight = usableHeight / rows;
 
   targets.forEach((target, index) => {
     if (target.state === "danger" || target.pending) return;
-    const column = index % columns;
-    const row = Math.floor(index / columns);
+
+    const row = index % rows;
+    const column = Math.floor(index / rows);
     target.x = cellWidth * column + cellWidth / 2;
     target.y = usableTop + cellHeight * row + cellHeight / 2;
-    target.width = Math.max(64, Math.min(cellWidth - 8, 42 + target.entry.en.length * 7));
+    target.width = Math.max(42, cellWidth - 6);
   });
 }
 
