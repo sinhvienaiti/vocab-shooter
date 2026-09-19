@@ -9,7 +9,7 @@ import type {
 const KEY = "vocabShooterSettings";
 
 export const defaultSettings: ShooterSettings = {
-  version: 2,
+  version: 3,
   mode: "classic",
   speechEnabled: true,
   accent: "en-US",
@@ -17,7 +17,7 @@ export const defaultSettings: ShooterSettings = {
   volume: 1,
   revealMs: 2200,
   graphics: "balanced",
-  quickRestartKey: "Tab",
+  quickRestartKey: "Escape",
   musicEnabled: true,
   musicVolume: 0.35,
   sfxVolume: 0.7,
@@ -66,6 +66,7 @@ export function normalizeSettings(raw: unknown): ShooterSettings {
   if (raw === null || typeof raw !== "object") return structuredClone(defaultSettings);
 
   const data = raw as Record<string, unknown>;
+  const version = numberInRange(data["version"], 1, 1, 3);
   const classic = (data["classic"] ?? {}) as Record<string, unknown>;
   const bounce = (data["bounce"] ?? {}) as Record<string, unknown>;
   const timeAttack = (data["timeAttack"] ?? {}) as Record<string, unknown>;
@@ -76,7 +77,7 @@ export function normalizeSettings(raw: unknown): ShooterSettings {
   const legacySpawn = [0, 2450, 1950, 1500][legacyDifficulty] ?? defaultSettings.classic.spawnIntervalMs;
 
   return {
-    version: 2,
+    version: 3,
     mode: enumValue<GameMode>(
       data["mode"],
       ["classic", "bounce", "timeAttack", "targetRush"],
@@ -92,11 +93,14 @@ export function normalizeSettings(raw: unknown): ShooterSettings {
       ["performance", "balanced", "quality"],
       defaultSettings.graphics,
     ),
-    quickRestartKey: enumValue<QuickRestartKey>(
-      data["quickRestartKey"],
-      ["Tab", "Escape"],
-      defaultSettings.quickRestartKey,
-    ),
+    quickRestartKey:
+      version < 3
+        ? defaultSettings.quickRestartKey
+        : enumValue<QuickRestartKey>(
+            data["quickRestartKey"],
+            ["Tab", "Escape"],
+            defaultSettings.quickRestartKey,
+          ),
     musicEnabled: boolValue(data["musicEnabled"], defaultSettings.musicEnabled),
     musicVolume: numberInRange(data["musicVolume"], defaultSettings.musicVolume, 0, 1),
     sfxVolume: numberInRange(data["sfxVolume"], defaultSettings.sfxVolume, 0, 1),
