@@ -505,16 +505,15 @@ byId<HTMLButtonElement>("vocabularyButton").addEventListener("click", async () =
 });
 
 byId<HTMLButtonElement>("sourceClass").addEventListener("click", async () => {
-  sourceSettings = { ...sourceSettings, mode: "class" };
   try {
     await populateClassLevels();
+    await useClassSource(Number(byId<HTMLSelectElement>("classLevel").value));
   } catch (error) {
     alert(
       error instanceof Error ? error.message : "Unable to load vocabulary levels.",
     );
-    sourceSettings = { ...sourceSettings, mode: "custom" };
+    renderVocabularySourceUi();
   }
-  renderVocabularySourceUi();
 });
 
 byId<HTMLButtonElement>("sourceCustom").addEventListener("click", () => {
