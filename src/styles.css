@@ -367,3 +367,50 @@ textarea {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+
+.vocab-source {
+  display: grid;
+  gap: .7rem;
+  padding: .8rem;
+  border: 1px solid rgba(113,215,255,.12);
+  border-radius: 12px;
+  background: rgba(9,17,31,.52);
+}
+.vocab-source-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .45rem;
+}
+.vocab-source-tabs button.active {
+  border-color: rgba(113,215,255,.42);
+  background: rgba(57,183,235,.16);
+  color: #dff7ff;
+}
+.class-source-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: .65rem;
+  align-items: end;
+}
+.class-source-panel label {
+  display: grid;
+  gap: .28rem;
+  color: #8394ad;
+  font-size: .72rem;
+}
+.class-level-meta {
+  align-self: center;
+  color: #8ca0ba;
+  font-size: .72rem;
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .class-source-panel {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .class-level-meta {
+    white-space: normal;
+  }
+}
