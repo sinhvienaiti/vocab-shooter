@@ -1,3 +1,5 @@
+import type { Target } from "../mode-types";
+
 export function layoutRushTargets(targets: Target[], width: number, height: number): void {
   if (targets.length === 0) return;
 
