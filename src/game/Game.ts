@@ -1,6 +1,7 @@
 import { AudioManager } from "../audio/AudioManager";
 import { speakEnglish, stopSpeech } from "../audio/speech";
 import type { ShooterSettings, VocabularyEntry } from "../types";
+import { ShuffleBag } from "./shuffle-bag";
 import {
   classicDangerLevel,
   classicMaxTargets,
@@ -9,11 +10,7 @@ import {
 } from "./modes/ClassicMode";
 import { bounceDangerLevel, reflectTarget } from "./modes/BounceMode";
 import { timeAttackDangerLevel } from "./modes/TimeAttackMode";
-import {
-  layoutRushTargets,
-  rushDangerLevel,
-  shuffledEntries,
-} from "./modes/TargetRushMode";
+import { layoutRushTargets, rushDangerLevel } from "./modes/TargetRushMode";
 import type { GameResult, HudState, Target } from "./mode-types";
 
 type Star = {
@@ -68,6 +65,7 @@ export class Game {
   private readonly onResult: (result: GameResult) => void;
   private settings: ShooterSettings;
   private vocabulary: VocabularyEntry[];
+  private readonly vocabularyBag = new ShuffleBag<VocabularyEntry>();
   private targets: Target[] = [];
   private stars: Star[] = [];
   private particles: Particle[] = [];
@@ -119,6 +117,7 @@ export class Game {
     this.canvas = canvas;
     this.ctx = ctx;
     this.vocabulary = vocabulary;
+    this.vocabularyBag.setEntries(vocabulary);
     this.settings = settings;
     this.onHud = onHud;
     this.onLearningPanel = onLearningPanel;
@@ -151,6 +150,7 @@ export class Game {
 
   setVocabulary(entries: VocabularyEntry[]): void {
     this.vocabulary = entries;
+    this.vocabularyBag.setEntries(entries);
   }
 
 
@@ -209,7 +209,7 @@ export class Game {
   }
 
   private prepareTargetRush(): void {
-    const entries = shuffledEntries(this.vocabulary, this.settings.targetRush.targetCount);
+    const entries = this.vocabularyBag.take(this.settings.targetRush.targetCount);
     this.targets = entries.map((entry) => this.makeTarget(entry, "dormant"));
     this.rushQueue = this.targets.map((target) => target.id);
     layoutRushTargets(this.targets, this.width, this.height);
@@ -474,7 +474,7 @@ export class Game {
   }
 
   private spawnTarget(): void {
-    const entry = this.vocabulary[Math.floor(Math.random() * this.vocabulary.length)];
+    const entry = this.vocabularyBag.takeOne();
     if (entry === undefined) return;
     const target = this.makeTarget(entry, "normal");
     const margin = target.width / 2 + 18;

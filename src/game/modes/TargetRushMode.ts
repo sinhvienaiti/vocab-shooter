@@ -1,28 +1,3 @@
-import type { VocabularyEntry } from "../../types";
-import type { Target } from "../mode-types";
-
-function shuffle(entries: VocabularyEntry[]): VocabularyEntry[] {
-  const pool = [...entries];
-  for (let index = pool.length - 1; index > 0; index--) {
-    const swap = Math.floor(Math.random() * (index + 1));
-    [pool[index], pool[swap]] = [pool[swap] as VocabularyEntry, pool[index] as VocabularyEntry];
-  }
-  return pool;
-}
-
-export function shuffledEntries(entries: VocabularyEntry[], count: number): VocabularyEntry[] {
-  if (entries.length === 0 || count <= 0) return [];
-  const result: VocabularyEntry[] = [];
-  while (result.length < count) {
-    const cycle = shuffle(entries);
-    for (const entry of cycle) {
-      result.push(entry);
-      if (result.length >= count) break;
-    }
-  }
-  return result;
-}
-
 export function layoutRushTargets(targets: Target[], width: number, height: number): void {
   if (targets.length === 0) return;
 
