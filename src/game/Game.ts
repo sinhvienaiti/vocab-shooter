@@ -986,6 +986,71 @@ export class Game {
     ctx.fillText(suffix, textX, target.y + 1);
 
     ctx.restore();
+
+    if (active) {
+      this.drawActiveTargetIndicator(target, baseFontSize);
+    }
+  }
+
+  private drawActiveTargetIndicator(target: Target, fontSize: number): void {
+    const ctx = this.ctx;
+    const time = performance.now() / 1000;
+    const bob = Math.sin(time * 5.2) * 2.2;
+    const turnScale = 0.68 + Math.abs(Math.cos(time * 2.4)) * 0.32;
+    const sway = Math.sin(time * 2.1) * 0.045;
+    const y = Math.max(
+      14,
+      target.y - Math.max(25, fontSize * 1.75) + bob,
+    );
+
+    ctx.save();
+    ctx.translate(target.x, y);
+    ctx.rotate(sway);
+    ctx.scale(turnScale, 1);
+
+    const gradient = ctx.createLinearGradient(0, -11, 0, 11);
+    gradient.addColorStop(0, "#ff9aac");
+    gradient.addColorStop(0.45, "#ff4f70");
+    gradient.addColorStop(1, "#d91f47");
+
+    ctx.globalAlpha = 0.96;
+    ctx.shadowColor = "rgba(255,65,95,.78)";
+    ctx.shadowBlur = 9 + Math.sin(time * 4.4) * 1.5;
+    ctx.strokeStyle = gradient;
+    ctx.fillStyle = gradient;
+    ctx.lineCap = "round";
+    ctx.lineWidth = 4.2;
+
+    // Rounded stem.
+    ctx.beginPath();
+    ctx.moveTo(0, -9);
+    ctx.lineTo(0, 0.5);
+    ctx.stroke();
+
+    // Soft, slightly chubby arrow head.
+    ctx.beginPath();
+    ctx.moveTo(-7.2, -0.8);
+    ctx.quadraticCurveTo(-8.4, -0.2, -6.4, 2.2);
+    ctx.lineTo(-2, 8);
+    ctx.quadraticCurveTo(0, 10.8, 2, 8);
+    ctx.lineTo(6.4, 2.2);
+    ctx.quadraticCurveTo(8.4, -0.2, 7.2, -0.8);
+    ctx.quadraticCurveTo(3.6, 1.1, 0, 3.6);
+    ctx.quadraticCurveTo(-3.6, 1.1, -7.2, -0.8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Small moving highlight keeps the marker from looking flat.
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = "rgba(255,255,255,.72)";
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-1.2, -7.4);
+    ctx.lineTo(-1.2, -2.3);
+    ctx.stroke();
+
+    ctx.restore();
   }
 
   private drawShot(shot: Shot): void {
@@ -1035,40 +1100,32 @@ export class Game {
     const ctx = this.ctx;
     const progress = reveal.life / reveal.maxLife;
     const alpha = Math.min(1, progress * 4);
-    const viSize = 17;
+    const viSize = 18;
     const ipaSize = 12;
-    ctx.font = `800 ${viSize}px ui-sans-serif, system-ui`;
-    const viWidth = ctx.measureText(reveal.vi).width;
-    ctx.font = `600 ${ipaSize}px ui-sans-serif, system-ui`;
-    const ipaWidth = ctx.measureText(reveal.ipa || " ").width;
-    const width = Math.min(this.width - 24, Math.max(150, Math.max(viWidth, ipaWidth) + 32));
-    const height = reveal.ipa.trim() === "" ? 45 : 61;
-    const x = Math.min(this.width - width - 10, Math.max(10, reveal.x - width / 2));
-    const y = Math.max(12, reveal.y - height / 2);
+    const maxWidth = Math.max(120, this.width - 40);
+    const x = Math.min(this.width - 20, Math.max(20, reveal.x));
+    const y = Math.max(24, reveal.y);
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = "rgba(10,18,35,.82)";
-    ctx.strokeStyle = "rgba(113,215,255,.48)";
-    ctx.lineWidth = 1;
-    this.roundRect(ctx, x, y, width, height, 15);
-    ctx.fill();
-    ctx.stroke();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = `800 ${viSize}px ui-sans-serif, system-ui`;
-    ctx.fillStyle = "#f5f9ff";
-    ctx.fillText(
-      reveal.vi,
-      x + width / 2,
-      y + (reveal.ipa.trim() === "" ? 23 : 21),
-      width - 24,
-    );
+
+    // Keep the meaning readable without drawing a card/border over the board.
+    ctx.font = `900 ${viSize}px ui-sans-serif, system-ui`;
+    ctx.fillStyle = "#fff9df";
+    ctx.shadowColor = "rgba(255,223,105,.34)";
+    ctx.shadowBlur = 13;
+    ctx.fillText(reveal.vi, x, y, maxWidth);
+
     if (reveal.ipa.trim() !== "") {
-      ctx.font = `600 ${ipaSize}px ui-sans-serif, system-ui`;
-      ctx.fillStyle = "#91a7c7";
-      ctx.fillText(reveal.ipa, x + width / 2, y + 43, width - 24);
+      ctx.shadowColor = "rgba(0,0,0,.72)";
+      ctx.shadowBlur = 6;
+      ctx.font = `650 ${ipaSize}px ui-sans-serif, system-ui`;
+      ctx.fillStyle = "#a9b9cf";
+      ctx.fillText(reveal.ipa, x, y + 20, maxWidth);
     }
+
     ctx.restore();
   }
 
@@ -1106,23 +1163,6 @@ export class Game {
     ctx.restore();
   }
 
-  private roundRect(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    radius: number,
-  ): void {
-    const r = Math.min(radius, width / 2, height / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + width, y, x + width, y + height, r);
-    ctx.arcTo(x + width, y + height, x, y + height, r);
-    ctx.arcTo(x, y + height, x, y, r);
-    ctx.arcTo(x, y, x + width, y, r);
-    ctx.closePath();
-  }
 }
 
 export type { GameResult, HudState, LearningPanelState };
