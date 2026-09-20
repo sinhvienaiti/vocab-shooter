@@ -9,6 +9,13 @@ import {
 } from "./storage/settings";
 import type { GameMode, ShooterSettings, VocabularyEntry } from "./types";
 import { parseBulkVocabulary, vocabularyToBulk } from "./ui/vocabulary-editor";
+import {
+  loadVocabularyIndex,
+  loadVocabularyLevel,
+  loadVocabularySourceSettings,
+  saveVocabularySourceSettings,
+  type VocabularyIndex,
+} from "./vocabulary/library";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (app === null) throw new Error("#app not found");
@@ -77,6 +84,22 @@ app.innerHTML = `
         <button class="icon-button" value="cancel" aria-label="Close">×</button>
       </div>
 
+      <div class="vocab-source">
+        <div class="vocab-source-tabs">
+          <button type="button" id="sourceClass">Class</button>
+          <button type="button" id="sourceCustom">Custom</button>
+        </div>
+        <div id="classSourcePanel" class="class-source-panel hidden">
+          <label>
+            <span>Level</span>
+            <select id="classLevel"></select>
+          </label>
+          <span id="classLevelMeta" class="class-level-meta"></span>
+          <button type="button" id="applyClassSource" class="primary">Use level</button>
+        </div>
+      </div>
+
+      <div id="customSourcePanel">
       <div class="vocab-toolbar">
         <button type="button" id="addRow">+ Add word</button>
         <button type="button" id="toggleBulk">Bulk import</button>
@@ -100,6 +123,7 @@ app.innerHTML = `
       <div class="dialog-footer">
         <span id="vocabCount"></span>
         <button type="button" id="saveVocabulary" class="primary">Save vocabulary</button>
+      </div>
       </div>
     </form>
   </dialog>
@@ -181,7 +205,22 @@ const vocabularyDialog = byQuery<HTMLDialogElement>("#vocabularyDialog");
 const settingsDialog = byQuery<HTMLDialogElement>("#settingsDialog");
 const resultDialog = byQuery<HTMLDialogElement>("#resultDialog");
 
-let vocabulary = await getVocabulary();
+let customVocabulary = await getVocabulary();
+let sourceSettings = loadVocabularySourceSettings();
+let libraryIndex: VocabularyIndex | null = null;
+let vocabulary = customVocabulary;
+
+try {
+  libraryIndex = await loadVocabularyIndex();
+  if (sourceSettings.mode === "class") {
+    vocabulary = await loadVocabularyLevel(sourceSettings.level, libraryIndex);
+  }
+} catch (error) {
+  console.warn(error);
+  sourceSettings = { ...sourceSettings, mode: "custom" };
+  vocabulary = customVocabulary;
+}
+
 let settings = loadSettings();
 
 function byQuery<T extends Element>(selector: string): T {
@@ -364,10 +403,131 @@ for (const button of document.querySelectorAll<HTMLButtonElement>(".mode-tabs bu
   });
 }
 
-byId<HTMLButtonElement>("vocabularyButton").addEventListener("click", () => {
-  renderVocabularyRows();
-  byId<HTMLTextAreaElement>("bulkInput").value = vocabularyToBulk(vocabulary);
+async function ensureVocabularyIndex(): Promise<VocabularyIndex> {
+  if (libraryIndex !== null) return libraryIndex;
+  libraryIndex = await loadVocabularyIndex();
+  return libraryIndex;
+}
+
+function renderVocabularySourceUi(): void {
+  byId<HTMLButtonElement>("sourceClass").classList.toggle(
+    "active",
+    sourceSettings.mode === "class",
+  );
+  byId<HTMLButtonElement>("sourceCustom").classList.toggle(
+    "active",
+    sourceSettings.mode === "custom",
+  );
+  byId("classSourcePanel").classList.toggle(
+    "hidden",
+    sourceSettings.mode !== "class",
+  );
+  byId("customSourcePanel").classList.toggle(
+    "hidden",
+    sourceSettings.mode !== "custom",
+  );
+
+  if (sourceSettings.mode === "custom") {
+    renderVocabularyRows();
+    byId<HTMLTextAreaElement>("bulkInput").value =
+      vocabularyToBulk(customVocabulary);
+  }
+}
+
+function updateClassLevelMeta(): void {
+  if (libraryIndex === null) return;
+  const level = Number(byId<HTMLSelectElement>("classLevel").value);
+  const metadata = libraryIndex.levels.find((item) => item.level === level);
+  byId("classLevelMeta").textContent =
+    metadata === undefined
+      ? ""
+      : `${metadata.count} entries · ${metadata.label}`;
+}
+
+async function populateClassLevels(): Promise<void> {
+  const index = await ensureVocabularyIndex();
+  const select = byId<HTMLSelectElement>("classLevel");
+  select.replaceChildren();
+
+  for (const level of index.levels) {
+    const option = document.createElement("option");
+    option.value = String(level.level);
+    option.textContent =
+      `Level ${String(level.level).padStart(3, "0")} · ${level.label}`;
+    select.append(option);
+  }
+
+  select.value = String(
+    index.levels.some((item) => item.level === sourceSettings.level)
+      ? sourceSettings.level
+      : (index.levels[0]?.level ?? 1),
+  );
+  updateClassLevelMeta();
+}
+
+async function useCustomSource(): Promise<void> {
+  sourceSettings = { ...sourceSettings, mode: "custom" };
+  saveVocabularySourceSettings(sourceSettings);
+  vocabulary = customVocabulary;
+  game.setVocabulary(vocabulary);
+  prepareRestart();
+  renderVocabularySourceUi();
+}
+
+async function useClassSource(level: number): Promise<void> {
+  try {
+    const index = await ensureVocabularyIndex();
+    const entries = await loadVocabularyLevel(level, index);
+    sourceSettings = { mode: "class", level };
+    saveVocabularySourceSettings(sourceSettings);
+    vocabulary = entries;
+    game.setVocabulary(vocabulary);
+    prepareRestart();
+    renderVocabularySourceUi();
+    updateClassLevelMeta();
+  } catch (error) {
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Unable to load the selected vocabulary level.",
+    );
+  }
+}
+
+byId<HTMLButtonElement>("vocabularyButton").addEventListener("click", async () => {
+  try {
+    await populateClassLevels();
+  } catch (error) {
+    console.warn(error);
+  }
+  renderVocabularySourceUi();
   vocabularyDialog.showModal();
+});
+
+byId<HTMLButtonElement>("sourceClass").addEventListener("click", async () => {
+  sourceSettings = { ...sourceSettings, mode: "class" };
+  try {
+    await populateClassLevels();
+  } catch (error) {
+    alert(
+      error instanceof Error ? error.message : "Unable to load vocabulary levels.",
+    );
+    sourceSettings = { ...sourceSettings, mode: "custom" };
+  }
+  renderVocabularySourceUi();
+});
+
+byId<HTMLButtonElement>("sourceCustom").addEventListener("click", () => {
+  void useCustomSource();
+});
+
+byId<HTMLSelectElement>("classLevel").addEventListener(
+  "change",
+  updateClassLevelMeta,
+);
+
+byId<HTMLButtonElement>("applyClassSource").addEventListener("click", () => {
+  void useClassSource(Number(byId<HTMLSelectElement>("classLevel").value));
 });
 
 byId<HTMLButtonElement>("settingsButton").addEventListener("click", () => {
@@ -378,8 +538,8 @@ byId<HTMLButtonElement>("settingsButton").addEventListener("click", () => {
 function renderVocabularyRows(): void {
   const body = byId<HTMLTableSectionElement>("vocabRows");
   body.replaceChildren();
-  for (const entry of vocabulary) body.append(createVocabularyRow(entry));
-  byId("vocabCount").textContent = `${vocabulary.length} entries`;
+  for (const entry of customVocabulary) body.append(createVocabularyRow(entry));
+  byId("vocabCount").textContent = `${customVocabulary.length} entries`;
 }
 
 function createVocabularyRow(entry: VocabularyEntry): HTMLTableRowElement {
@@ -431,7 +591,9 @@ byId<HTMLButtonElement>("toggleBulk").addEventListener("click", () => {
 });
 
 byId<HTMLButtonElement>("applyBulk").addEventListener("click", () => {
-  vocabulary = parseBulkVocabulary(byId<HTMLTextAreaElement>("bulkInput").value);
+  customVocabulary = parseBulkVocabulary(
+    byId<HTMLTextAreaElement>("bulkInput").value,
+  );
   renderVocabularyRows();
 });
 
@@ -449,10 +611,14 @@ byId<HTMLButtonElement>("saveVocabulary").addEventListener("click", async () => 
       ipa,
     });
   }
-  vocabulary = entries;
-  await replaceVocabulary(vocabulary);
+  customVocabulary = entries;
+  await replaceVocabulary(customVocabulary);
+  sourceSettings = { ...sourceSettings, mode: "custom" };
+  saveVocabularySourceSettings(sourceSettings);
+  vocabulary = customVocabulary;
   game.setVocabulary(vocabulary);
   vocabularyDialog.close();
+  prepareRestart();
 });
 
 function downloadJson(filename: string, data: unknown): void {
@@ -468,7 +634,7 @@ function downloadJson(filename: string, data: unknown): void {
 byId<HTMLButtonElement>("exportBackup").addEventListener("click", () => {
   downloadJson("typing-game-vocab-shooter-backup.json", {
     version: 2,
-    vocabulary,
+    vocabulary: customVocabulary,
     settings,
   });
 });
@@ -485,15 +651,18 @@ byId<HTMLInputElement>("importBackup").addEventListener("change", async (event) 
     };
 
     if (Array.isArray(data.vocabulary)) {
-      vocabulary = data.vocabulary
+      customVocabulary = data.vocabulary
         .filter((entry) => typeof entry.en === "string" && typeof entry.vi === "string")
         .map((entry) => ({
           ...entry,
           id: entry.id || crypto.randomUUID(),
           ipa: entry.ipa ?? "",
         }));
-      await replaceVocabulary(vocabulary);
-      game.setVocabulary(vocabulary);
+      await replaceVocabulary(customVocabulary);
+      if (sourceSettings.mode === "custom") {
+        vocabulary = customVocabulary;
+        game.setVocabulary(vocabulary);
+      }
     }
 
     if (data.settings !== undefined) {
@@ -504,7 +673,8 @@ byId<HTMLInputElement>("importBackup").addEventListener("change", async (event) 
     }
 
     renderVocabularyRows();
-    byId<HTMLTextAreaElement>("bulkInput").value = vocabularyToBulk(vocabulary);
+    byId<HTMLTextAreaElement>("bulkInput").value =
+      vocabularyToBulk(customVocabulary);
   } catch {
     alert("Invalid backup file.");
   } finally {
