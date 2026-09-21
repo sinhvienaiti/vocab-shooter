@@ -623,6 +623,14 @@ export class Game {
 
     if (!isRush) {
       speakEnglish(target.entry.en, this.settings);
+      this.reveals.push({
+        x: target.x,
+        y: Math.min(this.height - 48, target.y + 34),
+        vi: target.entry.vi,
+        ipa: target.entry.ipa,
+        life: this.settings.revealMs / 1000,
+        maxLife: this.settings.revealMs / 1000,
+      });
     }
 
     this.shots.push({
@@ -683,17 +691,6 @@ export class Game {
     const { x, y } = target;
     this.audio.playExplosion(shot.lateSave);
     this.addExplosion(x, y, shot.lateSave);
-
-    if (this.settings.mode !== "targetRush") {
-      this.reveals.push({
-        x,
-        y,
-        vi: target.entry.vi,
-        ipa: target.entry.ipa,
-        life: this.settings.revealMs / 1000,
-        maxLife: this.settings.revealMs / 1000,
-      });
-    }
 
     this.removeTarget(target.id);
 
