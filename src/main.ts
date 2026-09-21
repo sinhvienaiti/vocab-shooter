@@ -482,6 +482,10 @@ async function populateClassLevels(): Promise<void> {
 }
 
 async function useClassSource(level: number): Promise<void> {
+  const applyButton = byId<HTMLButtonElement>("applyClassSource");
+  applyButton.disabled = true;
+  applyButton.textContent = "Applying…";
+
   try {
     const index = await ensureVocabularyIndex();
     const metadata = index.levels.find((item) => item.level === level);
@@ -504,6 +508,9 @@ async function useClassSource(level: number): Promise<void> {
         ? error.message
         : "Unable to load the selected vocabulary level.",
     );
+  } finally {
+    applyButton.disabled = false;
+    applyButton.textContent = "Use level";
   }
 }
 
