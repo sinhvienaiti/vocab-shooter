@@ -431,6 +431,11 @@ textarea {
   font-size: .72rem;
   white-space: nowrap;
 }
+.class-source-panel button:disabled {
+  opacity: .62;
+  cursor: wait;
+  transform: none;
+}
 @media (max-width: 720px) {
   .class-source-panel {
     grid-template-columns: 1fr;
