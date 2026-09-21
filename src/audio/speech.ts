@@ -1,6 +1,7 @@
 import type { ShooterSettings } from "../types";
 
 function notifyParentSpeech(active: boolean): void {
+  if (window.parent === window) return;
   window.parent?.postMessage(
     { type: "typing-game:speech", active },
     "*",
