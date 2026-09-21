@@ -500,7 +500,7 @@ async function useClassSource(level: number): Promise<void> {
     showGameNotice(
       metadata === undefined
         ? `Level ${String(level).padStart(3, "0")} applied`
-        : `Level ${String(level).padStart(3, "0")} applied · ${metadata.count} words`,
+        : `Level ${String(level).padStart(3, "0")} applied · ${metadata.count} entries`,
     );
   } catch (error) {
     alert(
@@ -641,7 +641,7 @@ byId<HTMLButtonElement>("saveVocabulary").addEventListener("click", async () => 
   game.setVocabulary(vocabulary);
   vocabularyDialog.close();
   prepareRestart();
-  showGameNotice(`Custom vocabulary saved · ${customVocabulary.length} words`);
+  showGameNotice(`Custom vocabulary saved · ${customVocabulary.length} entries`);
 });
 
 function downloadJson(filename: string, data: unknown): void {
