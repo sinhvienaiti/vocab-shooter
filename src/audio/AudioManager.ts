@@ -7,6 +7,7 @@ export class AudioManager {
   private musicNodes: OscillatorNode[] = [];
   private settings: ShooterSettings;
   private lastDanger = -1;
+  private sharedMusicPlaying = false;
 
   constructor(settings: ShooterSettings) {
     this.settings = settings;
@@ -14,13 +15,20 @@ export class AudioManager {
 
   updateSettings(settings: ShooterSettings): void {
     this.settings = settings;
-    this.applyMusicLevels(0);
+    this.applyMusicLevels(Math.max(0, this.lastDanger));
+  }
+
+  setSharedMusicPlaying(playing: boolean): void {
+    if (this.sharedMusicPlaying === playing) return;
+    this.sharedMusicPlaying = playing;
+    if (!playing && this.settings.musicEnabled) this.ensureMusic();
+    this.applyMusicLevels(Math.max(0, this.lastDanger));
   }
 
   unlock(): void {
     const context = this.getContext();
     if (context?.state === "suspended") void context.resume();
-    if (this.settings.musicEnabled) this.ensureMusic();
+    if (this.settings.musicEnabled && !this.sharedMusicPlaying) this.ensureMusic();
   }
 
   suspend(): void {
@@ -88,7 +96,11 @@ export class AudioManager {
   }
 
   private ensureMusic(): void {
-    if (!this.settings.musicEnabled || this.musicNodes.length > 0) return;
+    if (
+      !this.settings.musicEnabled ||
+      this.sharedMusicPlaying ||
+      this.musicNodes.length > 0
+    ) return;
     const context = this.getContext();
     if (context === null) return;
 
@@ -128,7 +140,10 @@ export class AudioManager {
     const context = this.context;
     if (context === null || this.baseGain === null || this.dangerGain === null) return;
     const now = context.currentTime;
-    const music = this.settings.musicEnabled ? this.settings.musicVolume : 0;
+    const music =
+      this.settings.musicEnabled && !this.sharedMusicPlaying
+        ? this.settings.musicVolume
+        : 0;
     const baseLevel = 0.018 * music;
     const dangerLevelGain = this.settings.dangerAudioEnabled ? 0.035 * music * dangerLevel : 0;
     this.baseGain.gain.cancelScheduledValues(now);
