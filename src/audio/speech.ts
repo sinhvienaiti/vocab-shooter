@@ -1,5 +1,12 @@
 import type { ShooterSettings } from "../types";
 
+function notifyParentSpeech(active: boolean): void {
+  window.parent?.postMessage(
+    { type: "typing-game:speech", active },
+    "*",
+  );
+}
+
 function preferredVoice(lang: string): SpeechSynthesisVoice | null {
   const voices = speechSynthesis.getVoices();
   const exact = voices.find((voice) => voice.lang.toLowerCase() === lang.toLowerCase());
@@ -18,9 +25,13 @@ export function speakEnglish(text: string, settings: ShooterSettings): void {
   utterance.volume = settings.volume;
   const voice = preferredVoice(settings.accent);
   if (voice !== null) utterance.voice = voice;
+  utterance.onstart = () => notifyParentSpeech(true);
+  utterance.onend = () => notifyParentSpeech(false);
+  utterance.onerror = () => notifyParentSpeech(false);
   speechSynthesis.speak(utterance);
 }
 
 export function stopSpeech(): void {
+  notifyParentSpeech(false);
   if ("speechSynthesis" in window) speechSynthesis.cancel();
 }
