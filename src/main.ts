@@ -147,8 +147,8 @@ app.innerHTML = `
         <label>${settingTitle("Reveal duration", "Choose how long Vietnamese and IPA stay visible after a correct target.")}<input id="revealMs" type="range" min="700" max="5000" step="100" /><output id="revealMsValue"></output></label>
         <label>${settingTitle("Graphics", "Balance particles and visual detail against rendering performance.")}<select id="graphics"><option value="performance">Performance</option><option value="balanced">Balanced</option><option value="quality">Quality</option></select></label>
         <label>${settingTitle("Quick restart", "Reset to ready. Press another key, then the 3-second countdown starts.")}<select id="quickRestartKey"><option value="Escape">Escape</option><option value="Tab">Tab</option></select></label>
-        <label>${settingTitle("Background music", "Enable the offline procedural background music.")}<select id="musicEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
-        <label>${settingTitle("Music volume", "Adjust background music volume.")}<input id="musicVolume" type="range" min="0" max="1" step="0.05" /><output id="musicVolumeValue"></output></label>
+        <label>${settingTitle("Fallback music", "Use Shooter's procedural background music only when the shared portal music is not playing.")}<select id="musicEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
+        <label>${settingTitle("Fallback music volume", "Adjust Shooter's procedural fallback music volume.")}<input id="musicVolume" type="range" min="0" max="1" step="0.05" /><output id="musicVolumeValue"></output></label>
         <label>${settingTitle("SFX volume", "Adjust game sound-effect volume.")}<input id="sfxVolume" type="range" min="0" max="1" step="0.05" /><output id="sfxVolumeValue"></output></label>
         <label>${settingTitle("Danger audio", "Enable warning audio when the current mode becomes dangerous.")}<select id="dangerAudioEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
       </div>
@@ -358,6 +358,15 @@ const game = new Game(
   learningPanel,
   showResult,
 );
+
+window.addEventListener("message", (event: MessageEvent<unknown>) => {
+  if (event.source !== window.parent) return;
+  if (event.data === null || typeof event.data !== "object") return;
+  const data = event.data as Record<string, unknown>;
+  if (data["type"] !== "typing-game:shared-music") return;
+  if (typeof data["playing"] !== "boolean") return;
+  game.setSharedMusicPlaying(data["playing"]);
+});
 
 function prepareRestart(): void {
   clearCountdown();
