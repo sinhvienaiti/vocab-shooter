@@ -10,7 +10,8 @@ function preferredVoice(lang: string): SpeechSynthesisVoice | null {
 
 export function speakEnglish(text: string, settings: ShooterSettings): void {
   if (!settings.speechEnabled || !("speechSynthesis" in window)) return;
-  speechSynthesis.cancel();
+  // Do not cancel the current utterance here. The browser speech engine queues
+  // later words, so fast typing still pronounces every completed word in order.
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = settings.accent;
   utterance.rate = settings.speechRate;
