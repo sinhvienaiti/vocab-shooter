@@ -151,6 +151,10 @@ export class Game {
     this.seedStars();
   }
 
+  setSharedMusicPlaying(playing: boolean): void {
+    this.audio.setSharedMusicPlaying(playing);
+  }
+
   setVocabulary(entries: VocabularyEntry[]): void {
     this.vocabulary = entries;
     this.vocabularyBag.setEntries(entries);
