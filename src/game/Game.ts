@@ -57,6 +57,9 @@ type LearningPanelState = {
   ipa: string;
 };
 
+const SHOT_MAX_TRAVEL_SECONDS = 0.22;
+const SHOT_MIN_SPEED = 1800;
+
 export class Game {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
@@ -633,12 +636,18 @@ export class Game {
       });
     }
 
+    const shotX = this.width / 2;
+    const shotY = this.height - 62;
+    const shotDistance = Math.hypot(target.x - shotX, target.y - shotY);
     this.shots.push({
-      x: this.width / 2,
-      y: this.height - 62,
+      x: shotX,
+      y: shotY,
       tx: target.x,
       ty: target.y,
-      speed: 1050,
+      speed: Math.max(
+        SHOT_MIN_SPEED,
+        shotDistance / SHOT_MAX_TRAVEL_SECONDS,
+      ),
       targetId: target.id,
       lateSave,
     });
