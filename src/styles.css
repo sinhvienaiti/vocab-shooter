@@ -139,6 +139,30 @@ button.primary {
 .active-strip strong { color: #dce9fb; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; }
 .active-strip small { color: #536178; }
 
+.game-notice {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  z-index: 60;
+  max-width: min(520px, calc(100vw - 2rem));
+  padding: .65rem .9rem;
+  border: 1px solid rgba(113,215,255,.24);
+  border-radius: 10px;
+  background: rgba(9,18,32,.96);
+  color: #dff7ff;
+  box-shadow: 0 14px 36px rgba(0,0,0,.34);
+  font-size: .76rem;
+  font-weight: 750;
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+.game-notice.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .game-stage {
   position: relative;
   min-height: 0;
@@ -215,6 +239,7 @@ textarea {
 }
 .vocab-table td { padding: .35rem; border-top: 1px solid rgba(255,255,255,.04); }
 .vocab-table input,
+.class-source-panel select,
 .settings-grid input,
 .settings-grid select {
   width: 100%;
@@ -226,6 +251,7 @@ textarea {
 }
 .vocab-table input { border-color: transparent; background: rgba(255,255,255,.03); }
 .vocab-table input:focus,
+.class-source-panel select:focus,
 .settings-grid input:focus,
 .settings-grid select:focus {
   outline: 0;
