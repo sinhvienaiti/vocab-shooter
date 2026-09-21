@@ -28,6 +28,7 @@ export function speakEnglish(text: string, settings: ShooterSettings): void {
   utterance.onstart = () => notifyParentSpeech(true);
   utterance.onend = () => notifyParentSpeech(false);
   utterance.onerror = () => notifyParentSpeech(false);
+  notifyParentSpeech(true);
   speechSynthesis.speak(utterance);
 }
 
