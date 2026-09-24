@@ -27,13 +27,20 @@ export type VocabularyIndex = {
   levels: VocabularyLevelMeta[];
 };
 
+export type VocabularyTopicEntry = {
+  key: string;
+  level: number;
+};
+
 export type VocabularyTopicMeta = {
   id: string;
   label: string;
   group: string;
+  groupLabel?: string;
   levels: string[];
   count: number;
   keys: string[];
+  entries?: VocabularyTopicEntry[];
 };
 
 export type VocabularyTopicIndex = {
@@ -84,12 +91,32 @@ function isTopicMeta(value: unknown): value is VocabularyTopicMeta {
     typeof topic["label"] === "string" &&
     topic["label"].trim() !== "" &&
     typeof topic["group"] === "string" &&
+    (topic["groupLabel"] === undefined ||
+      (typeof topic["groupLabel"] === "string" &&
+        topic["groupLabel"].trim() !== "")) &&
     Array.isArray(topic["levels"]) &&
     Array.isArray(topic["keys"]) &&
     topic["keys"].every((key) => typeof key === "string" && key.trim() !== "") &&
+    (topic["entries"] === undefined ||
+      (Array.isArray(topic["entries"]) &&
+        topic["entries"].every((entry) => {
+          if (entry === null || typeof entry !== "object") return false;
+          const item = entry as Record<string, unknown>;
+          return (
+            typeof item["key"] === "string" &&
+            item["key"].trim() !== "" &&
+            typeof item["level"] === "number" &&
+            Number.isInteger(item["level"]) &&
+            item["level"] >= 1 &&
+            item["level"] <= 100
+          );
+        }))) &&
     typeof topic["count"] === "number" &&
     Number.isInteger(topic["count"]) &&
-    topic["count"] > 0
+    topic["count"] > 0 &&
+    topic["keys"].length === topic["count"] &&
+    (topic["entries"] === undefined ||
+      topic["entries"].length === topic["count"])
   );
 }
 
@@ -227,17 +254,22 @@ export async function loadVocabularyTopic(
     throw new Error(`Vocabulary topic ${topicId} is unavailable`);
   }
 
-  const [lookup, index] = await Promise.all([
-    loadVocabularyLookup(),
-    vocabularyIndex === undefined ? loadVocabularyIndex() : Promise.resolve(vocabularyIndex),
-  ]);
+  const index =
+    vocabularyIndex === undefined
+      ? await loadVocabularyIndex()
+      : vocabularyIndex;
+
+  let levelHints = topic.entries;
+  if (levelHints === undefined) {
+    const lookup = await loadVocabularyLookup();
+    levelHints = topic.keys.flatMap((key) => {
+      const level = lookup.entries[normalizeEnglish(key)];
+      return Number.isInteger(level) ? [{ key, level }] : [];
+    });
+  }
 
   const levels = [
-    ...new Set(
-      topic.keys
-        .map((key) => lookup.entries[normalizeEnglish(key)])
-        .filter((level): level is number => Number.isInteger(level)),
-    ),
+    ...new Set(levelHints.map((entry) => entry.level)),
   ].sort((a, b) => a - b);
 
   const levelEntries = await Promise.all(

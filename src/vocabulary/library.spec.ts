@@ -22,9 +22,14 @@ describe("topic vocabulary source", () => {
           id: "food.fruit",
           label: "Fruit",
           group: "food",
+          groupLabel: "Food & Drink",
           levels: ["A1"],
           count: 2,
           keys: ["banana", "apple"],
+          entries: [
+            { key: "banana", level: 2 },
+            { key: "apple", level: 1 },
+          ],
         },
       ],
     };
@@ -43,10 +48,8 @@ describe("topic vocabulary source", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       const json =
-        url.endsWith("/lookup.json")
-          ? { version: 1, totalEntries: 3, entries: { apple: 1, banana: 2, carrot: 3 } }
-          : url.endsWith("/levels/001.json")
-            ? {
+        url.endsWith("/levels/001.json")
+          ? {
                 version: 1,
                 level: 1,
                 entries: [{ id: "L001-001", en: "apple", vi: "táo", ipa: "/ˈæpəl/" }],
@@ -75,7 +78,7 @@ describe("topic vocabulary source", () => {
 
     expect(entries.map((entry) => entry.en)).toEqual(["banana", "apple"]);
     const urls = fetchMock.mock.calls.map(([input]) => String(input));
-    expect(urls.some((url) => url.endsWith("/lookup.json"))).toBe(true);
+    expect(urls.some((url) => url.endsWith("/lookup.json"))).toBe(false);
     expect(urls.some((url) => url.endsWith("/levels/001.json"))).toBe(true);
     expect(urls.some((url) => url.endsWith("/levels/002.json"))).toBe(true);
     expect(urls.some((url) => url.endsWith("/levels/003.json"))).toBe(false);
