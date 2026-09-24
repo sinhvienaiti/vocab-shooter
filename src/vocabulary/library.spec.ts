@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearVocabularyLevelCache,
   loadVocabularyGrammarModule,
+  loadVocabularyKeys,
   loadVocabularyPosCategory,
   loadVocabularySourceSettings,
   loadVocabularyTopic,
@@ -27,8 +28,19 @@ function installVocabularyFetch(): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     const json =
-      url.endsWith("/levels/001.json")
+      url.endsWith("/lookup.json")
         ? {
+            version: 1,
+            totalEntries: 4,
+            entries: {
+              apple: 1,
+              today: 1,
+              banana: 2,
+              work: 2,
+            },
+          }
+        : url.endsWith("/levels/001.json")
+          ? {
             version: 1,
             level: 1,
             entries: [
@@ -45,7 +57,7 @@ function installVocabularyFetch(): ReturnType<typeof vi.fn> {
                 { id: "L002-002", en: "work", vi: "công việc", ipa: "/wɝk/" },
               ],
             }
-          : { version: 1, level: 3, entries: [] };
+            : { version: 1, level: 3, entries: [] };
 
     return {
       ok: true,
@@ -132,6 +144,29 @@ describe("shared curriculum vocabulary sources", () => {
       .map(([input]) => String(input))
       .filter((url) => url.includes("/levels/"));
     expect(levelUrls).toHaveLength(2);
+  });
+
+  it("resolves an ordered Smart Review key set through the shared lookup", async () => {
+    const fetchMock = installVocabularyFetch();
+
+    const entries = await loadVocabularyKeys(
+      ["banana", "apple"],
+      vocabularyIndex,
+    );
+
+    expect(entries.map((entry) => entry.en)).toEqual(["banana", "apple"]);
+    const urls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(urls.some((url) => url.endsWith("/lookup.json"))).toBe(true);
+    expect(urls.some((url) => url.endsWith("/levels/001.json"))).toBe(true);
+    expect(urls.some((url) => url.endsWith("/levels/002.json"))).toBe(true);
+  });
+
+  it("fails closed when a Smart Review key is missing", async () => {
+    installVocabularyFetch();
+
+    await expect(
+      loadVocabularyKeys(["banana", "missing"], vocabularyIndex),
+    ).rejects.toThrow("missing review item");
   });
 
   it("loads word-type entries from embedded level hints without the 18k lookup", async () => {
