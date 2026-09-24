@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clearVocabularyLevelCache,
   loadVocabularyGrammarModule,
   loadVocabularyPosCategory,
   loadVocabularySourceSettings,
@@ -58,6 +59,7 @@ function installVocabularyFetch(): ReturnType<typeof vi.fn> {
 
 describe("shared curriculum vocabulary sources", () => {
   afterEach(() => {
+    clearVocabularyLevelCache();
     vi.unstubAllGlobals();
   });
 
@@ -97,6 +99,39 @@ describe("shared curriculum vocabulary sources", () => {
     expect(urls.some((url) => url.endsWith("/levels/001.json"))).toBe(true);
     expect(urls.some((url) => url.endsWith("/levels/002.json"))).toBe(true);
     expect(urls.some((url) => url.endsWith("/levels/003.json"))).toBe(false);
+  });
+
+  it("reuses level documents across repeated curriculum loads in one session", async () => {
+    const topicIndex: VocabularyTopicIndex = {
+      version: 1,
+      totalGroups: 1,
+      totalTopics: 1,
+      uniqueVocabularyKeys: 2,
+      topics: [
+        {
+          id: "food.fruit",
+          label: "Fruit",
+          group: "food",
+          groupLabel: "Food & Drink",
+          levels: ["A1"],
+          count: 2,
+          keys: ["banana", "apple"],
+          entries: [
+            { key: "banana", level: 2 },
+            { key: "apple", level: 1 },
+          ],
+        },
+      ],
+    };
+    const fetchMock = installVocabularyFetch();
+
+    await loadVocabularyTopic("food.fruit", topicIndex, vocabularyIndex);
+    await loadVocabularyTopic("food.fruit", topicIndex, vocabularyIndex);
+
+    const levelUrls = fetchMock.mock.calls
+      .map(([input]) => String(input))
+      .filter((url) => url.includes("/levels/"));
+    expect(levelUrls).toHaveLength(2);
   });
 
   it("loads word-type entries from embedded level hints without the 18k lookup", async () => {
