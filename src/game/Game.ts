@@ -1204,4 +1204,9 @@ export class Game {
 
 }
 
-export type { GameResult, HudState, LearningPanelState };
+export type {
+  GameResult,
+  HudState,
+  LearningPanelState,
+  WordLearningSignal,
+};
