@@ -17,6 +17,15 @@ export type Target = {
   state: TargetState;
   dangerRemaining: number;
   lateSave: boolean;
+  wrongKeys: number;
+  presentedAt: number;
+};
+
+export type WordLearningSignal = {
+  entry: VocabularyEntry;
+  outcome: "completed" | "missed";
+  wrongKeys: number;
+  responseMs: number;
 };
 
 export type HudState = {
