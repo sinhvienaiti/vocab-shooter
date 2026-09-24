@@ -855,19 +855,26 @@ async function useGrammarSource(grammarId: string): Promise<void> {
   }
 }
 
+async function populateActiveVocabularySource(): Promise<void> {
+  if (vocabularySourceTab === "class") {
+    await populateClassLevels();
+  } else if (vocabularySourceTab === "topic") {
+    await populateTopics();
+  } else if (vocabularySourceTab === "word-type") {
+    await populateWordTypes();
+  } else if (vocabularySourceTab === "grammar") {
+    await populateGrammar();
+  }
+}
+
 byId<HTMLButtonElement>("vocabularyButton").addEventListener("click", async () => {
   vocabularySourceTab = sourceSettings.mode;
+  renderVocabularySourceUi();
   try {
-    await Promise.all([
-      populateClassLevels(),
-      populateTopics(),
-      populateWordTypes(),
-      populateGrammar(),
-    ]);
+    await populateActiveVocabularySource();
   } catch (error) {
     console.warn(error);
   }
-  renderVocabularySourceUi();
   vocabularyDialog.showModal();
 });
 
