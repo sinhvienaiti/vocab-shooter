@@ -11,7 +11,12 @@ import {
 import { bounceDangerLevel, reflectTarget } from "./modes/BounceMode";
 import { timeAttackDangerLevel } from "./modes/TimeAttackMode";
 import { layoutRushTargets, rushDangerLevel } from "./modes/TargetRushMode";
-import type { GameResult, HudState, Target } from "./mode-types";
+import type {
+  GameResult,
+  HudState,
+  Target,
+  WordLearningSignal,
+} from "./mode-types";
 
 type Star = {
   x: number;
@@ -66,6 +71,7 @@ export class Game {
   private readonly onHud: (state: HudState) => void;
   private readonly onLearningPanel: (state: LearningPanelState) => void;
   private readonly onResult: (result: GameResult) => void;
+  private readonly onLearningSignal: (signal: WordLearningSignal) => void;
   private settings: ShooterSettings;
   private vocabulary: VocabularyEntry[];
   private readonly vocabularyBag = new ShuffleBag<VocabularyEntry>();
@@ -114,6 +120,7 @@ export class Game {
     onHud: (state: HudState) => void,
     onLearningPanel: (state: LearningPanelState) => void,
     onResult: (result: GameResult) => void,
+    onLearningSignal: (signal: WordLearningSignal) => void = () => undefined,
   ) {
     const ctx = canvas.getContext("2d");
     if (ctx === null) throw new Error("Canvas 2D context is unavailable");
@@ -125,6 +132,7 @@ export class Game {
     this.onHud = onHud;
     this.onLearningPanel = onLearningPanel;
     this.onResult = onResult;
+    this.onLearningSignal = onLearningSignal;
     this.audio = new AudioManager(settings);
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
@@ -241,6 +249,8 @@ export class Game {
       state,
       dangerRemaining: 0,
       lateSave: false,
+      wrongKeys: 0,
+      presentedAt: performance.now(),
     };
   }
 
@@ -430,6 +440,7 @@ export class Game {
       target.y += ((playerY - target.y) / remaining) * delta;
 
       if (target.dangerRemaining <= 0 || Math.hypot(playerX - target.x, playerY - target.y) < 22) {
+        this.emitLearningSignal(target, "missed");
         this.failedWord = target.entry.en;
         this.audio.playImpact();
         this.addExplosion(playerX, playerY, true);
@@ -449,6 +460,8 @@ export class Game {
       if (target === null || target.pending) continue;
       target.state = "spotlight";
       target.typed = 0;
+      target.wrongKeys = 0;
+      target.presentedAt = performance.now();
       this.spotlightTargetId = target.id;
       this.spotlightElapsed = 0;
       this.onLearningPanel({
@@ -562,6 +575,7 @@ export class Game {
     const expected = target.entry.en[target.typed]?.toLocaleLowerCase("en-US");
     if (expected !== key) {
       target.error = 0.18;
+      target.wrongKeys++;
       this.wrongKeys++;
       this.streak = 0;
       this.audio.playMiss();
@@ -607,7 +621,20 @@ export class Game {
     return this.targets.find((target) => target.id === id) ?? null;
   }
 
+  private emitLearningSignal(
+    target: Target,
+    outcome: WordLearningSignal["outcome"],
+  ): void {
+    this.onLearningSignal({
+      entry: target.entry,
+      outcome,
+      wrongKeys: target.wrongKeys,
+      responseMs: Math.max(0, performance.now() - target.presentedAt),
+    });
+  }
+
   private completeTarget(target: Target): void {
+    this.emitLearningSignal(target, "completed");
     target.pending = true;
     target.state = "pending";
     this.activeTargetId = null;
@@ -662,6 +689,7 @@ export class Game {
   }
 
   private classicTargetEscaped(target: Target): void {
+    this.emitLearningSignal(target, "missed");
     this.removeTarget(target.id);
     this.missedWords++;
     this.lives--;
@@ -674,6 +702,7 @@ export class Game {
   }
 
   private timeAttackTargetMissed(target: Target): void {
+    this.emitLearningSignal(target, "missed");
     this.removeTarget(target.id);
     this.missedWords++;
     this.streak = 0;
