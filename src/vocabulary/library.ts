@@ -446,6 +446,38 @@ async function loadEntriesByReferences(
   return resolved;
 }
 
+export async function loadVocabularyKeys(
+  keys: readonly string[],
+  vocabularyIndex?: VocabularyIndex,
+): Promise<VocabularyEntry[]> {
+  const normalizedKeys = [
+    ...new Set(keys.map(normalizeEnglish).filter((key) => key !== "")),
+  ];
+  if (normalizedKeys.length === 0) return [];
+
+  const lookup = await loadVocabularyLookup();
+  const references = normalizedKeys.flatMap((key) => {
+    const level = lookup.entries[key];
+    return Number.isInteger(level) ? [{ key, level }] : [];
+  });
+
+  if (references.length !== normalizedKeys.length) {
+    const mapped = new Set(
+      references.map((entry) => normalizeEnglish(entry.key)),
+    );
+    const missing = normalizedKeys.filter((key) => !mapped.has(key));
+    throw new Error(
+      `Shared vocabulary is missing review item${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`,
+    );
+  }
+
+  return loadEntriesByReferences(
+    references,
+    normalizedKeys,
+    vocabularyIndex,
+  );
+}
+
 export async function loadVocabularyTopic(
   topicId: string,
   topicIndex?: VocabularyTopicIndex,
