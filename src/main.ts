@@ -13,9 +13,12 @@ import {
   loadVocabularyIndex,
   loadVocabularyLevel,
   loadVocabularySourceSettings,
+  loadVocabularyTopic,
+  loadVocabularyTopicIndex,
   saveVocabularySourceSettings,
   type VocabularyIndex,
   type VocabularySourceMode,
+  type VocabularyTopicIndex,
 } from "./vocabulary/library";
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -90,6 +93,7 @@ app.innerHTML = `
       <div class="vocab-source">
         <div class="vocab-source-tabs">
           <button type="button" id="sourceClass">Class</button>
+          <button type="button" id="sourceTopic">Topic</button>
           <button type="button" id="sourceCustom">Custom</button>
         </div>
         <div id="classSourcePanel" class="class-source-panel hidden">
@@ -99,6 +103,14 @@ app.innerHTML = `
           </label>
           <span id="classLevelMeta" class="class-level-meta"></span>
           <button type="button" id="applyClassSource" class="primary">Use level</button>
+        </div>
+        <div id="topicSourcePanel" class="class-source-panel topic-source-panel hidden">
+          <label>
+            <span>Topic</span>
+            <select id="topicSelect"></select>
+          </label>
+          <span id="topicMeta" class="class-level-meta"></span>
+          <button type="button" id="applyTopicSource" class="primary">Use topic</button>
         </div>
       </div>
 
@@ -212,12 +224,20 @@ let customVocabulary = await getVocabulary();
 let sourceSettings = loadVocabularySourceSettings();
 let vocabularySourceTab: VocabularySourceMode = sourceSettings.mode;
 let libraryIndex: VocabularyIndex | null = null;
+let topicIndex: VocabularyTopicIndex | null = null;
 let vocabulary = customVocabulary;
 
 try {
   libraryIndex = await loadVocabularyIndex();
   if (sourceSettings.mode === "class") {
     vocabulary = await loadVocabularyLevel(sourceSettings.level, libraryIndex);
+  } else if (sourceSettings.mode === "topic") {
+    topicIndex = await loadVocabularyTopicIndex();
+    vocabulary = await loadVocabularyTopic(
+      sourceSettings.topicId,
+      topicIndex,
+      libraryIndex,
+    );
   }
 } catch (error) {
   console.warn(error);
@@ -434,10 +454,20 @@ async function ensureVocabularyIndex(): Promise<VocabularyIndex> {
   return libraryIndex;
 }
 
+async function ensureTopicIndex(): Promise<VocabularyTopicIndex> {
+  if (topicIndex !== null) return topicIndex;
+  topicIndex = await loadVocabularyTopicIndex();
+  return topicIndex;
+}
+
 function renderVocabularySourceUi(): void {
   byId<HTMLButtonElement>("sourceClass").classList.toggle(
     "active",
     vocabularySourceTab === "class",
+  );
+  byId<HTMLButtonElement>("sourceTopic").classList.toggle(
+    "active",
+    vocabularySourceTab === "topic",
   );
   byId<HTMLButtonElement>("sourceCustom").classList.toggle(
     "active",
@@ -446,6 +476,10 @@ function renderVocabularySourceUi(): void {
   byId("classSourcePanel").classList.toggle(
     "hidden",
     vocabularySourceTab !== "class",
+  );
+  byId("topicSourcePanel").classList.toggle(
+    "hidden",
+    vocabularySourceTab !== "topic",
   );
   byId("customSourcePanel").classList.toggle(
     "hidden",
@@ -490,6 +524,39 @@ async function populateClassLevels(): Promise<void> {
   updateClassLevelMeta();
 }
 
+function updateTopicMeta(): void {
+  if (topicIndex === null) return;
+  const topicId = byId<HTMLSelectElement>("topicSelect").value;
+  const metadata = topicIndex.topics.find((item) => item.id === topicId);
+  byId("topicMeta").textContent =
+    metadata === undefined
+      ? ""
+      : `${metadata.count} entries · ${metadata.levels.join(" / ")}`;
+}
+
+async function populateTopics(): Promise<void> {
+  const index = await ensureTopicIndex();
+  const select = byId<HTMLSelectElement>("topicSelect");
+  select.replaceChildren();
+
+  let currentGroup = "";
+  for (const topic of index.topics) {
+    const option = document.createElement("option");
+    option.value = topic.id;
+    option.textContent =
+      topic.group === currentGroup
+        ? `  ${topic.label}`
+        : `${topic.group} · ${topic.label}`;
+    currentGroup = topic.group;
+    select.append(option);
+  }
+
+  select.value = index.topics.some((item) => item.id === sourceSettings.topicId)
+    ? sourceSettings.topicId
+    : (index.topics[0]?.id ?? "");
+  updateTopicMeta();
+}
+
 async function useClassSource(level: number): Promise<void> {
   const applyButton = byId<HTMLButtonElement>("applyClassSource");
   applyButton.disabled = true;
@@ -499,7 +566,7 @@ async function useClassSource(level: number): Promise<void> {
     const index = await ensureVocabularyIndex();
     const metadata = index.levels.find((item) => item.level === level);
     const entries = await loadVocabularyLevel(level, index);
-    sourceSettings = { mode: "class", level };
+    sourceSettings = { ...sourceSettings, mode: "class", level };
     vocabularySourceTab = "class";
     saveVocabularySourceSettings(sourceSettings);
     vocabulary = entries;
@@ -523,10 +590,46 @@ async function useClassSource(level: number): Promise<void> {
   }
 }
 
+async function useTopicSource(topicId: string): Promise<void> {
+  const applyButton = byId<HTMLButtonElement>("applyTopicSource");
+  applyButton.disabled = true;
+  applyButton.textContent = "Applying…";
+
+  try {
+    const [topics, levels] = await Promise.all([
+      ensureTopicIndex(),
+      ensureVocabularyIndex(),
+    ]);
+    const metadata = topics.topics.find((item) => item.id === topicId);
+    const entries = await loadVocabularyTopic(topicId, topics, levels);
+    sourceSettings = { ...sourceSettings, mode: "topic", topicId };
+    vocabularySourceTab = "topic";
+    saveVocabularySourceSettings(sourceSettings);
+    vocabulary = entries;
+    game.setVocabulary(vocabulary);
+    vocabularyDialog.close();
+    prepareRestart();
+    showGameNotice(
+      metadata === undefined
+        ? `Topic applied · ${entries.length} entries`
+        : `${metadata.label} applied · ${entries.length} entries`,
+    );
+  } catch (error) {
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Unable to load the selected vocabulary topic.",
+    );
+  } finally {
+    applyButton.disabled = false;
+    applyButton.textContent = "Use topic";
+  }
+}
+
 byId<HTMLButtonElement>("vocabularyButton").addEventListener("click", async () => {
   vocabularySourceTab = sourceSettings.mode;
   try {
-    await populateClassLevels();
+    await Promise.all([populateClassLevels(), populateTopics()]);
   } catch (error) {
     console.warn(error);
   }
@@ -546,6 +649,18 @@ byId<HTMLButtonElement>("sourceClass").addEventListener("click", async () => {
   }
 });
 
+byId<HTMLButtonElement>("sourceTopic").addEventListener("click", async () => {
+  vocabularySourceTab = "topic";
+  renderVocabularySourceUi();
+  try {
+    await populateTopics();
+  } catch (error) {
+    alert(
+      error instanceof Error ? error.message : "Unable to load vocabulary topics.",
+    );
+  }
+});
+
 byId<HTMLButtonElement>("sourceCustom").addEventListener("click", () => {
   vocabularySourceTab = "custom";
   renderVocabularySourceUi();
@@ -555,9 +670,16 @@ byId<HTMLSelectElement>("classLevel").addEventListener(
   "change",
   updateClassLevelMeta,
 );
+byId<HTMLSelectElement>("topicSelect").addEventListener(
+  "change",
+  updateTopicMeta,
+);
 
 byId<HTMLButtonElement>("applyClassSource").addEventListener("click", () => {
   void useClassSource(Number(byId<HTMLSelectElement>("classLevel").value));
+});
+byId<HTMLButtonElement>("applyTopicSource").addEventListener("click", () => {
+  void useTopicSource(byId<HTMLSelectElement>("topicSelect").value);
 });
 
 byId<HTMLButtonElement>("settingsButton").addEventListener("click", () => {
