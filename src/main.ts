@@ -524,26 +524,19 @@ function curriculumLabel(id: string): string {
 }
 
 function renderVocabularySourceUi(): void {
-  byId<HTMLButtonElement>("sourceClass").classList.toggle(
-    "active",
-    vocabularySourceTab === "class",
-  );
-  byId<HTMLButtonElement>("sourceTopic").classList.toggle(
-    "active",
-    vocabularySourceTab === "topic",
-  );
-  byId<HTMLButtonElement>("sourceWordType").classList.toggle(
-    "active",
-    vocabularySourceTab === "word-type",
-  );
-  byId<HTMLButtonElement>("sourceGrammar").classList.toggle(
-    "active",
-    vocabularySourceTab === "grammar",
-  );
-  byId<HTMLButtonElement>("sourceCustom").classList.toggle(
-    "active",
-    vocabularySourceTab === "custom",
-  );
+  const tabs: Array<[string, VocabularySourceMode]> = [
+    ["sourceClass", "class"],
+    ["sourceTopic", "topic"],
+    ["sourceWordType", "word-type"],
+    ["sourceGrammar", "grammar"],
+    ["sourceCustom", "custom"],
+  ];
+  for (const [id, mode] of tabs) {
+    const button = byId<HTMLButtonElement>(id);
+    const active = vocabularySourceTab === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
   byId("classSourcePanel").classList.toggle(
     "hidden",
     vocabularySourceTab !== "class",
