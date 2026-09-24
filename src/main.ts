@@ -1,5 +1,21 @@
 import "./styles.css";
-import { Game, type GameResult, type HudState, type LearningPanelState } from "./game/Game";
+import {
+  Game,
+  type GameResult,
+  type HudState,
+  type LearningPanelState,
+  type WordLearningSignal,
+} from "./game/Game";
+import {
+  LEARNING_ATTEMPT_MESSAGE,
+  PARENT_ORIGIN,
+  REVIEW_DATASET_MESSAGE,
+  REVIEW_ERROR_MESSAGE,
+  REVIEW_READY_MESSAGE,
+  buildShooterLearningEvent,
+  parseShooterReviewDataset,
+  type ShooterReviewGoal,
+} from "./learning/shared";
 import { getVocabulary, replaceVocabulary } from "./storage/db";
 import {
   defaultSettings,
@@ -13,6 +29,7 @@ import {
   loadVocabularyGrammarIndex,
   loadVocabularyGrammarModule,
   loadVocabularyIndex,
+  loadVocabularyKeys,
   loadVocabularyLevel,
   loadVocabularyPosCategory,
   loadVocabularyPosIndex,
@@ -386,6 +403,9 @@ let countdownTimer: number | null = null;
 let noticeTimer: number | null = null;
 let countdownActive = false;
 let readyForKey = false;
+let activeReviewGoal: ShooterReviewGoal | undefined;
+let settingsBeforeReview: ShooterSettings | null = null;
+let learningRequestSequence = 0;
 
 function clearCountdown(): void {
   if (countdownTimer === null) return;
@@ -414,6 +434,30 @@ function showGameNotice(message: string): void {
   }, 2600);
 }
 
+function postParentMessage(message: unknown): void {
+  if (window.parent === window) return;
+  window.parent.postMessage(message, PARENT_ORIGIN);
+}
+
+function emitLearningSignal(signal: WordLearningSignal): void {
+  learningRequestSequence++;
+  postParentMessage({
+    type: LEARNING_ATTEMPT_MESSAGE,
+    requestId: `vocab-shooter-${Date.now().toString(36)}-${learningRequestSequence.toString(36)}`,
+    event: buildShooterLearningEvent(signal),
+  });
+}
+
+function leaveReviewMode(): void {
+  activeReviewGoal = undefined;
+  if (settingsBeforeReview === null) return;
+
+  settings = settingsBeforeReview;
+  settingsBeforeReview = null;
+  game.updateSettings(settings);
+  updateModeUi();
+}
+
 const game = new Game(
   canvas,
   vocabulary,
@@ -421,6 +465,7 @@ const game = new Game(
   hud,
   learningPanel,
   showResult,
+  emitLearningSignal,
 );
 
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
@@ -483,7 +528,9 @@ byId<HTMLButtonElement>("closeResult").addEventListener("click", () => resultDia
 for (const button of document.querySelectorAll<HTMLButtonElement>(".mode-tabs button")) {
   button.addEventListener("click", () => {
     const mode = button.dataset["mode"] as GameMode | undefined;
-    if (mode === undefined || mode === settings.mode) return;
+    if (mode === undefined) return;
+    leaveReviewMode();
+    if (mode === settings.mode) return;
     settings = { ...settings, mode };
     saveSettings(settings);
     game.updateSettings(settings);
@@ -718,6 +765,7 @@ async function useClassSource(level: number): Promise<void> {
     const index = await ensureVocabularyIndex();
     const metadata = index.levels.find((item) => item.level === level);
     const entries = await loadVocabularyLevel(level, index);
+    leaveReviewMode();
     sourceSettings = { ...sourceSettings, mode: "class", level };
     vocabularySourceTab = "class";
     saveVocabularySourceSettings(sourceSettings);
@@ -754,6 +802,7 @@ async function useTopicSource(topicId: string): Promise<void> {
     ]);
     const metadata = topics.topics.find((item) => item.id === topicId);
     const entries = await loadVocabularyTopic(topicId, topics, levels);
+    leaveReviewMode();
     sourceSettings = { ...sourceSettings, mode: "topic", topicId };
     vocabularySourceTab = "topic";
     saveVocabularySourceSettings(sourceSettings);
@@ -790,6 +839,7 @@ async function useWordTypeSource(posId: string): Promise<void> {
     ]);
     const category = wordTypes.categories.find((item) => item.id === posId);
     const entries = await loadVocabularyPosCategory(posId, wordTypes, levels);
+    leaveReviewMode();
     sourceSettings = { ...sourceSettings, mode: "word-type", posId };
     vocabularySourceTab = "word-type";
     saveVocabularySourceSettings(sourceSettings);
@@ -828,6 +878,7 @@ async function useGrammarSource(grammarId: string): Promise<void> {
       topics,
       levels,
     );
+    leaveReviewMode();
     sourceSettings = { ...sourceSettings, mode: "grammar", grammarId };
     vocabularySourceTab = "grammar";
     saveVocabularySourceSettings(sourceSettings);
@@ -1033,6 +1084,7 @@ byId<HTMLButtonElement>("saveVocabulary").addEventListener("click", async () => 
   }
   customVocabulary = entries;
   await replaceVocabulary(customVocabulary);
+  leaveReviewMode();
   sourceSettings = { ...sourceSettings, mode: "custom" };
   vocabularySourceTab = "custom";
   saveVocabularySourceSettings(sourceSettings);
@@ -1153,6 +1205,7 @@ byId<HTMLButtonElement>("resetSettings").addEventListener("click", () => {
 });
 
 byId<HTMLButtonElement>("saveSettings").addEventListener("click", () => {
+  leaveReviewMode();
   settings = normalizeSettings({
     ...settings,
     speechEnabled: byId<HTMLSelectElement>("speechEnabled").value === "true",
