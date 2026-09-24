@@ -1,6 +1,7 @@
 import type { VocabularyEntry } from "../types";
 
 const BASE_URL = "https://typing-game.local/vocabulary";
+const levelCache = new Map<string, Promise<VocabularyEntry[]>>();
 const STORAGE_KEY = "vocabShooterVocabularySource";
 const DEFAULT_TOPIC_ID = "everyday.routine";
 const DEFAULT_POS_ID = "noun";
@@ -336,6 +337,10 @@ async function loadVocabularyLookup(): Promise<VocabularyLookup> {
   return data;
 }
 
+export function clearVocabularyLevelCache(): void {
+  levelCache.clear();
+}
+
 export async function loadVocabularyLevel(
   level: number,
   index?: VocabularyIndex,
@@ -348,29 +353,43 @@ export async function loadVocabularyLevel(
     throw new Error(`Vocabulary level ${level} is unavailable`);
   }
 
-  const response = await fetch(`${BASE_URL}/${metadata.file}`, {
-    cache: "no-cache",
-  });
-  if (!response.ok) {
-    throw new Error(`Vocabulary level request failed: ${response.status}`);
+  const url = `${BASE_URL}/${metadata.file}`;
+  let pending = levelCache.get(url);
+  if (pending === undefined) {
+    pending = (async (): Promise<VocabularyEntry[]> => {
+      const response = await fetch(url, {
+        cache: "no-cache",
+      });
+      if (!response.ok) {
+        throw new Error(`Vocabulary level request failed: ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        version?: unknown;
+        level?: unknown;
+        entries?: unknown;
+      };
+
+      if (
+        data.version !== 1 ||
+        data.level !== level ||
+        !Array.isArray(data.entries) ||
+        !data.entries.every(isEntry)
+      ) {
+        throw new Error(`Vocabulary level ${level} is invalid`);
+      }
+
+      return data.entries;
+    })();
+    levelCache.set(url, pending);
   }
 
-  const data = (await response.json()) as {
-    version?: unknown;
-    level?: unknown;
-    entries?: unknown;
-  };
-
-  if (
-    data.version !== 1 ||
-    data.level !== level ||
-    !Array.isArray(data.entries) ||
-    !data.entries.every(isEntry)
-  ) {
-    throw new Error(`Vocabulary level ${level} is invalid`);
+  try {
+    return await pending;
+  } catch (error) {
+    if (levelCache.get(url) === pending) levelCache.delete(url);
+    throw error;
   }
-
-  return data.entries;
 }
 
 async function resolveTopicReferences(

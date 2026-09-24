@@ -524,26 +524,19 @@ function curriculumLabel(id: string): string {
 }
 
 function renderVocabularySourceUi(): void {
-  byId<HTMLButtonElement>("sourceClass").classList.toggle(
-    "active",
-    vocabularySourceTab === "class",
-  );
-  byId<HTMLButtonElement>("sourceTopic").classList.toggle(
-    "active",
-    vocabularySourceTab === "topic",
-  );
-  byId<HTMLButtonElement>("sourceWordType").classList.toggle(
-    "active",
-    vocabularySourceTab === "word-type",
-  );
-  byId<HTMLButtonElement>("sourceGrammar").classList.toggle(
-    "active",
-    vocabularySourceTab === "grammar",
-  );
-  byId<HTMLButtonElement>("sourceCustom").classList.toggle(
-    "active",
-    vocabularySourceTab === "custom",
-  );
+  const tabs: Array<[string, VocabularySourceMode]> = [
+    ["sourceClass", "class"],
+    ["sourceTopic", "topic"],
+    ["sourceWordType", "word-type"],
+    ["sourceGrammar", "grammar"],
+    ["sourceCustom", "custom"],
+  ];
+  for (const [id, mode] of tabs) {
+    const button = byId<HTMLButtonElement>(id);
+    const active = vocabularySourceTab === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
   byId("classSourcePanel").classList.toggle(
     "hidden",
     vocabularySourceTab !== "class",
@@ -855,19 +848,26 @@ async function useGrammarSource(grammarId: string): Promise<void> {
   }
 }
 
+async function populateActiveVocabularySource(): Promise<void> {
+  if (vocabularySourceTab === "class") {
+    await populateClassLevels();
+  } else if (vocabularySourceTab === "topic") {
+    await populateTopics();
+  } else if (vocabularySourceTab === "word-type") {
+    await populateWordTypes();
+  } else if (vocabularySourceTab === "grammar") {
+    await populateGrammar();
+  }
+}
+
 byId<HTMLButtonElement>("vocabularyButton").addEventListener("click", async () => {
   vocabularySourceTab = sourceSettings.mode;
+  renderVocabularySourceUi();
   try {
-    await Promise.all([
-      populateClassLevels(),
-      populateTopics(),
-      populateWordTypes(),
-      populateGrammar(),
-    ]);
+    await populateActiveVocabularySource();
   } catch (error) {
     console.warn(error);
   }
-  renderVocabularySourceUi();
   vocabularyDialog.showModal();
 });
 
