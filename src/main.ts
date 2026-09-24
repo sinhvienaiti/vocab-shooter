@@ -328,7 +328,10 @@ function modeName(mode: GameMode): string {
 }
 
 function updateModeUi(): void {
-  byId("modeSubtitle").textContent = modeName(settings.mode);
+  byId("modeSubtitle").textContent =
+    activeReviewGoal === undefined
+      ? modeName(settings.mode)
+      : `Smart Review · ${activeReviewGoal.replaceAll("-", " ")}`;
   for (const button of document.querySelectorAll<HTMLButtonElement>(".mode-tabs button")) {
     button.classList.toggle("active", button.dataset["mode"] === settings.mode);
   }
@@ -468,10 +471,87 @@ const game = new Game(
   emitLearningSignal,
 );
 
+async function applyShooterReviewDataset(data: unknown): Promise<void> {
+  const raw =
+    data !== null && typeof data === "object"
+      ? (data as Record<string, unknown>)
+      : null;
+  const fallbackRequestId =
+    raw !== null && typeof raw["requestId"] === "string"
+      ? raw["requestId"].slice(0, 100)
+      : "invalid";
+
+  try {
+    const dataset = parseShooterReviewDataset(data);
+    if (dataset === null) return;
+
+    const entries = await loadVocabularyKeys(
+      dataset.entityIds,
+      libraryIndex ?? undefined,
+    );
+    if (entries.length !== dataset.entityIds.length) {
+      throw new Error(
+        `Shared vocabulary resolved ${entries.length}/${dataset.entityIds.length} Shooter review items`,
+      );
+    }
+
+    clearCountdown();
+    if (settingsBeforeReview === null) {
+      settingsBeforeReview = structuredClone(settings);
+    }
+
+    activeReviewGoal = dataset.goal;
+    vocabulary = entries;
+    game.setVocabulary(entries);
+    settings = {
+      ...settings,
+      mode: "targetRush",
+      targetRush: {
+        ...settings.targetRush,
+        targetCount: entries.length,
+      },
+    };
+    game.updateSettings(settings);
+    updateModeUi();
+
+    postParentMessage({
+      type: REVIEW_READY_MESSAGE,
+      requestId: dataset.requestId,
+      result: {
+        items: entries.length,
+        goal: dataset.goal,
+        mode: "targetRush",
+      },
+    });
+
+    showGameNotice(
+      `Smart Review ready · ${entries.length} item${entries.length === 1 ? "" : "s"} · Target Rush`,
+    );
+    beginCountdown();
+  } catch (error) {
+    leaveReviewMode();
+    postParentMessage({
+      type: REVIEW_ERROR_MESSAGE,
+      requestId: fallbackRequestId,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Shooter review dataset failed",
+    });
+  }
+}
+
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (event.source !== window.parent) return;
   if (event.data === null || typeof event.data !== "object") return;
   const data = event.data as Record<string, unknown>;
+
+  if (data["type"] === REVIEW_DATASET_MESSAGE) {
+    if (event.origin !== PARENT_ORIGIN) return;
+    void applyShooterReviewDataset(event.data);
+    return;
+  }
+
   if (data["type"] !== "typing-game:shared-music") return;
   if (typeof data["playing"] !== "boolean") return;
   game.setSharedMusicPlaying(data["playing"]);
