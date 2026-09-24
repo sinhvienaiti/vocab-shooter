@@ -2,12 +2,14 @@ import type { VocabularyEntry } from "../types";
 
 const BASE_URL = "https://typing-game.local/vocabulary";
 const STORAGE_KEY = "vocabShooterVocabularySource";
+const DEFAULT_TOPIC_ID = "everyday.routine";
 
-export type VocabularySourceMode = "class" | "custom";
+export type VocabularySourceMode = "class" | "topic" | "custom";
 
 export type VocabularySourceSettings = {
   mode: VocabularySourceMode;
   level: number;
+  topicId: string;
 };
 
 export type VocabularyLevelMeta = {
@@ -25,10 +27,38 @@ export type VocabularyIndex = {
   levels: VocabularyLevelMeta[];
 };
 
+export type VocabularyTopicMeta = {
+  id: string;
+  label: string;
+  group: string;
+  levels: string[];
+  count: number;
+  keys: string[];
+};
+
+export type VocabularyTopicIndex = {
+  version: 1;
+  totalGroups: number;
+  totalTopics: number;
+  uniqueVocabularyKeys: number;
+  topics: VocabularyTopicMeta[];
+};
+
+type VocabularyLookup = {
+  version: 1;
+  totalEntries: number;
+  entries: Record<string, number>;
+};
+
 const defaults: VocabularySourceSettings = {
   mode: "custom",
   level: 1,
+  topicId: DEFAULT_TOPIC_ID,
 };
+
+function normalizeEnglish(value: string): string {
+  return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+}
 
 function isEntry(value: unknown): value is VocabularyEntry {
   if (value === null || typeof value !== "object") return false;
@@ -45,13 +75,35 @@ function isEntry(value: unknown): value is VocabularyEntry {
   );
 }
 
+function isTopicMeta(value: unknown): value is VocabularyTopicMeta {
+  if (value === null || typeof value !== "object") return false;
+  const topic = value as Record<string, unknown>;
+  return (
+    typeof topic["id"] === "string" &&
+    topic["id"].trim() !== "" &&
+    typeof topic["label"] === "string" &&
+    topic["label"].trim() !== "" &&
+    typeof topic["group"] === "string" &&
+    Array.isArray(topic["levels"]) &&
+    Array.isArray(topic["keys"]) &&
+    topic["keys"].every((key) => typeof key === "string" && key.trim() !== "") &&
+    typeof topic["count"] === "number" &&
+    Number.isInteger(topic["count"]) &&
+    topic["count"] > 0
+  );
+}
+
 export function loadVocabularySourceSettings(): VocabularySourceSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === null) return { ...defaults };
     const data = JSON.parse(raw) as Record<string, unknown>;
+    const mode: VocabularySourceMode =
+      data["mode"] === "class" || data["mode"] === "topic"
+        ? data["mode"]
+        : "custom";
     return {
-      mode: data["mode"] === "class" ? "class" : "custom",
+      mode,
       level:
         typeof data["level"] === "number" &&
         Number.isInteger(data["level"]) &&
@@ -59,6 +111,10 @@ export function loadVocabularySourceSettings(): VocabularySourceSettings {
         data["level"] <= 100
           ? data["level"]
           : defaults.level,
+      topicId:
+        typeof data["topicId"] === "string" && data["topicId"].trim() !== ""
+          ? data["topicId"]
+          : defaults.topicId,
     };
   } catch {
     return { ...defaults };
@@ -84,6 +140,41 @@ export async function loadVocabularyIndex(): Promise<VocabularyIndex> {
     data.levels.length === 0
   ) {
     throw new Error("Vocabulary index is invalid");
+  }
+  return data;
+}
+
+export async function loadVocabularyTopicIndex(): Promise<VocabularyTopicIndex> {
+  const response = await fetch(`${BASE_URL}/topics/index.json`, {
+    cache: "no-cache",
+  });
+  if (!response.ok) {
+    throw new Error(`Vocabulary topic index request failed: ${response.status}`);
+  }
+  const data = (await response.json()) as VocabularyTopicIndex;
+  if (
+    data.version !== 1 ||
+    !Array.isArray(data.topics) ||
+    data.topics.length === 0 ||
+    !data.topics.every(isTopicMeta)
+  ) {
+    throw new Error("Vocabulary topic index is invalid");
+  }
+  return data;
+}
+
+async function loadVocabularyLookup(): Promise<VocabularyLookup> {
+  const response = await fetch(`${BASE_URL}/lookup.json`, { cache: "no-cache" });
+  if (!response.ok) {
+    throw new Error(`Vocabulary lookup request failed: ${response.status}`);
+  }
+  const data = (await response.json()) as VocabularyLookup;
+  if (
+    data.version !== 1 ||
+    typeof data.entries !== "object" ||
+    data.entries === null
+  ) {
+    throw new Error("Vocabulary lookup is invalid");
   }
   return data;
 }
@@ -123,4 +214,46 @@ export async function loadVocabularyLevel(
   }
 
   return data.entries;
+}
+
+export async function loadVocabularyTopic(
+  topicId: string,
+  topicIndex?: VocabularyTopicIndex,
+  vocabularyIndex?: VocabularyIndex,
+): Promise<VocabularyEntry[]> {
+  const topics = topicIndex ?? (await loadVocabularyTopicIndex());
+  const topic = topics.topics.find((item) => item.id === topicId);
+  if (topic === undefined) {
+    throw new Error(`Vocabulary topic ${topicId} is unavailable`);
+  }
+
+  const [lookup, index] = await Promise.all([
+    loadVocabularyLookup(),
+    vocabularyIndex === undefined ? loadVocabularyIndex() : Promise.resolve(vocabularyIndex),
+  ]);
+
+  const levels = [
+    ...new Set(
+      topic.keys
+        .map((key) => lookup.entries[normalizeEnglish(key)])
+        .filter((level): level is number => Number.isInteger(level)),
+    ),
+  ].sort((a, b) => a - b);
+
+  const levelEntries = await Promise.all(
+    levels.map((level) => loadVocabularyLevel(level, index)),
+  );
+  const entriesByKey = new Map<string, VocabularyEntry>();
+  for (const entry of levelEntries.flat()) {
+    entriesByKey.set(normalizeEnglish(entry.en), entry);
+  }
+
+  const resolved = topic.keys
+    .map((key) => entriesByKey.get(normalizeEnglish(key)))
+    .filter((entry): entry is VocabularyEntry => entry !== undefined);
+
+  if (resolved.length === 0) {
+    throw new Error(`Vocabulary topic ${topicId} has no available entries`);
+  }
+  return resolved;
 }
