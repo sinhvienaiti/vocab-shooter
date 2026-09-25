@@ -24,7 +24,7 @@ import {
   saveSettings,
 } from "./storage/settings";
 import type { GameMode, ShooterSettings, VocabularyEntry } from "./types";
-import { parseBulkVocabulary, vocabularyToBulk } from "./ui/vocabulary-editor";
+import { normalizeImportedVocabulary, parseBulkVocabulary, vocabularyToBulk } from "./ui/vocabulary-editor";
 import {
   loadVocabularyGrammarIndex,
   loadVocabularyGrammarModule,
@@ -553,6 +553,7 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
   }
 
   if (data["type"] !== "typing-game:shared-music") return;
+  if (event.origin !== PARENT_ORIGIN) return;
   if (typeof data["playing"] !== "boolean") return;
   game.setSharedMusicPlaying(data["playing"]);
 });
@@ -1200,18 +1201,16 @@ byId<HTMLInputElement>("importBackup").addEventListener("change", async (event) 
 
   try {
     const data = JSON.parse(await file.text()) as {
-      vocabulary?: VocabularyEntry[];
+      vocabulary?: unknown;
       settings?: unknown;
     };
 
-    if (Array.isArray(data.vocabulary)) {
-      customVocabulary = data.vocabulary
-        .filter((entry) => typeof entry.en === "string" && typeof entry.vi === "string")
-        .map((entry) => ({
-          ...entry,
-          id: entry.id || crypto.randomUUID(),
-          ipa: entry.ipa ?? "",
-        }));
+    if (data.vocabulary !== undefined) {
+      const imported = normalizeImportedVocabulary(data.vocabulary);
+      if (imported.length === 0) {
+        throw new Error("Backup has no valid vocabulary entries");
+      }
+      customVocabulary = imported;
       await replaceVocabulary(customVocabulary);
       if (sourceSettings.mode === "custom") {
         vocabulary = customVocabulary;

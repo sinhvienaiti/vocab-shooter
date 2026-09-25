@@ -1,10 +1,12 @@
 import type { ShooterSettings } from "../types";
 
+const PARENT_ORIGIN = "https://typing-game.local";
+
 function notifyParentSpeech(active: boolean): void {
   if (window.parent === window) return;
   window.parent?.postMessage(
     { type: "typing-game:speech", active },
-    "*",
+    PARENT_ORIGIN,
   );
 }
 
