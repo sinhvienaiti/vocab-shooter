@@ -1,4 +1,4 @@
-export type LearningEntityType = "vocabulary" | "grammar" | "sentence";
+export type LearningEntityType = "vocabulary" | "sentence";
 
 export type LearningMetadata = {
   entityType: LearningEntityType;
