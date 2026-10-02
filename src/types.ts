@@ -1,8 +1,17 @@
+export type LearningEntityType = "vocabulary" | "grammar" | "sentence";
+
+export type LearningMetadata = {
+  entityType: LearningEntityType;
+  entityId: string;
+  activityType: string;
+};
+
 export type VocabularyEntry = {
   id: string;
   en: string;
   vi: string;
   ipa: string;
+  learning?: LearningMetadata;
 };
 
 export type Accent = "en-US" | "en-GB";

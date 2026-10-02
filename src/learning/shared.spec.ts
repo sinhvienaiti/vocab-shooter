@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildShooterLearningEvent,
+  parseShooterEnglishActivityDataset,
   parseShooterReviewDataset,
+  shooterEnglishActivityEntries,
 } from "./shared";
 
 describe("Vocabulary Shooter shared learning contract", () => {
@@ -104,4 +106,38 @@ describe("Vocabulary Shooter shared learning contract", () => {
       errorType: "missed-word",
     });
   });
+  it("preserves rich phrase identity in Shooter learning events", () => {
+    const dataset = parseShooterEnglishActivityDataset({
+      version: 1,
+      type: "typing-game:english-content:v1:activity-dataset",
+      requestId: "shooter-rich-1",
+      gameId: "vocab-shooter",
+      activity: "phrasal-verb",
+      items: [{
+        contentId: "pv.look-up",
+        entityType: "sentence",
+        entityId: "pv.look-up",
+        promptText: "tra cứu",
+        answerText: "look up",
+        meaningVi: "tra cứu",
+      }],
+    });
+    expect(dataset).not.toBeNull();
+    const entry = shooterEnglishActivityEntries(dataset!)[0]!;
+    expect(
+      buildShooterLearningEvent({
+        entry,
+        outcome: "completed",
+        wrongKeys: 0,
+        responseMs: 700,
+        occurredAt: "2026-10-03T00:00:00.000Z",
+      }),
+    ).toMatchObject({
+      entityType: "sentence",
+      entityId: "pv.look-up",
+      activityType: "phrasal-verb",
+      result: "correct",
+    });
+  });
+
 });

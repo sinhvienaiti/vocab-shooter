@@ -7,13 +7,16 @@ import {
   type WordLearningSignal,
 } from "./game/Game";
 import {
+  ENGLISH_ACTIVITY_DATASET_MESSAGE,
   LEARNING_ATTEMPT_MESSAGE,
   PARENT_ORIGIN,
   REVIEW_DATASET_MESSAGE,
   REVIEW_ERROR_MESSAGE,
   REVIEW_READY_MESSAGE,
   buildShooterLearningEvent,
+  parseShooterEnglishActivityDataset,
   parseShooterReviewDataset,
+  shooterEnglishActivityEntries,
   type ShooterReviewGoal,
 } from "./learning/shared";
 import { getVocabulary, replaceVocabulary } from "./storage/db";
@@ -541,6 +544,58 @@ async function applyShooterReviewDataset(data: unknown): Promise<void> {
   }
 }
 
+async function applyShooterEnglishActivityDataset(
+  data: unknown,
+): Promise<void> {
+  const raw =
+    data !== null && typeof data === "object"
+      ? (data as Record<string, unknown>)
+      : null;
+  const fallbackRequestId =
+    raw !== null && typeof raw["requestId"] === "string"
+      ? raw["requestId"].slice(0, 100)
+      : "invalid";
+  try {
+    const dataset = parseShooterEnglishActivityDataset(data);
+    if (dataset === null) return;
+    const entries = shooterEnglishActivityEntries(dataset);
+    clearCountdown();
+    if (settingsBeforeReview === null) settingsBeforeReview = structuredClone(settings);
+    activeReviewGoal = "mixed";
+    vocabulary = entries;
+    game.setVocabulary(entries);
+    settings = {
+      ...settings,
+      mode: "targetRush",
+      targetRush: { ...settings.targetRush, targetCount: entries.length },
+    };
+    game.updateSettings(settings);
+    updateModeUi();
+    postParentMessage({
+      type: REVIEW_READY_MESSAGE,
+      requestId: dataset.requestId,
+      result: {
+        items: entries.length,
+        activity: dataset.activity,
+        mode: "targetRush",
+        richContent: true,
+      },
+    });
+    showGameNotice(
+      `English practice ready · ${entries.length} item${entries.length === 1 ? "" : "s"} · ${dataset.activity}`,
+    );
+    beginCountdown();
+  } catch (error) {
+    leaveReviewMode();
+    postParentMessage({
+      type: REVIEW_ERROR_MESSAGE,
+      requestId: fallbackRequestId,
+      message:
+        error instanceof Error ? error.message : "Shooter English activity failed",
+    });
+  }
+}
+
 window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (event.source !== window.parent) return;
   if (event.data === null || typeof event.data !== "object") return;
@@ -549,6 +604,11 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
   if (data["type"] === REVIEW_DATASET_MESSAGE) {
     if (event.origin !== PARENT_ORIGIN) return;
     void applyShooterReviewDataset(event.data);
+    return;
+  }
+  if (data["type"] === ENGLISH_ACTIVITY_DATASET_MESSAGE) {
+    if (event.origin !== PARENT_ORIGIN) return;
+    void applyShooterEnglishActivityDataset(event.data);
     return;
   }
 
